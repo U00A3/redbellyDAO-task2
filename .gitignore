@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+ui/node_modules/
+
+# Build & compiler output
+artifacts/
+cache/
+typechain-types/
+ui/dist/
+coverage/
+coverage.json
+
+# Secrets & local env
+.env
+.env.*
+!.env.example
+ui/.env
+!ui/.env.production
+!ui/.env.development
+
+# Local deploy manifests (use deployments/example.json for public addresses)
+deployments/*.json
+!deployments/example.json
+
+# Local task brief (not for public repo)
+task2.txt
+
+# OS / editor
+.DS_Store
+*.log

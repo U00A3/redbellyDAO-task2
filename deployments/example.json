@@ -1,0 +1,48 @@
+{
+  "network": "redbellyTestnet",
+  "chainId": "153",
+  "bootstrap": "0xDAFEA492D9c6733ae3d56b7Ed1ADB60692c98Bc5",
+  "deployer": "0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76",
+  "registryKind": "MockBusinessPermissionRegistry + MockIndividualPermissionRegistry",
+  "contracts": {
+    "asset": "0xE5278DB20f95e582f9Eff5cb30C414944847EEbC",
+    "businessRegistry": "0xf6e36ecBe3094872c164654aE6B9F98f43B76b42",
+    "individualRegistry": "0xDED51Cbba458Ba7F01A011fB3525c5294596383A",
+    "catVault": "0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D"
+  },
+  "uiEnv": {
+    "VITE_VAULT_ADDRESS": "0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D"
+  },
+  "allowlistBenchmark": "Only US (0x5553) on allowedJurisdictions; SG reverts (default deny)",
+  "demoTransactions": {
+    "allowedUsBusinessDeposit": "0xa9a3085748a8ebd4aefdefe4996ad15bba70b8ab8c5e38615517e09a3dfe6aad",
+    "blockedSgDeposit": "reverted JurisdictionBlocked",
+    "allowedUsIndividualDeposit": "0xf452480bea34f8106a5da1428cba37ebaac7e8839dfc0924c2ed0344093331f7"
+  },
+  "demoPreviewAliases": {
+    "note": "Run npm run seed:demo to link wallets. UI resolves aliases to on-chain checkJurisdiction reads.",
+    "Demo1": {
+      "wallet": "0x000000000000000000000000000000000000D001",
+      "path": "business",
+      "jurisdiction": "US",
+      "expectedWhenUsOnlyAllowlist": "allowed"
+    },
+    "Demo2": {
+      "wallet": "0x000000000000000000000000000000000000D002",
+      "path": "business",
+      "jurisdiction": "SG",
+      "expectedWhenUsOnlyAllowlist": "blocked"
+    },
+    "Demo3": {
+      "wallet": "0x000000000000000000000000000000000000D003",
+      "linked": false,
+      "expected": "JurisdictionParseFailed - not linked"
+    },
+    "Demo4": {
+      "wallet": "0x000000000000000000000000000000000000D004",
+      "path": "individual",
+      "jurisdiction": "US",
+      "expectedWhenUsOnlyAllowlist": "allowed"
+    }
+  }
+}

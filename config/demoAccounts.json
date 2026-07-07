@@ -1,0 +1,30 @@
+{
+  "Demo1": {
+    "address": "0x000000000000000000000000000000000000D001",
+    "jurisdiction": "US",
+    "companyName": "Demo US Issuer",
+    "linked": true,
+    "depositorPath": "business"
+  },
+  "Demo2": {
+    "address": "0x000000000000000000000000000000000000D002",
+    "jurisdiction": "SG",
+    "companyName": "Demo SG Issuer",
+    "linked": true,
+    "depositorPath": "business"
+  },
+  "Demo3": {
+    "address": "0x000000000000000000000000000000000000D003",
+    "jurisdiction": null,
+    "companyName": null,
+    "linked": false,
+    "depositorPath": null
+  },
+  "Demo4": {
+    "address": "0x000000000000000000000000000000000000D004",
+    "jurisdiction": "US",
+    "companyName": "Demo US Retail",
+    "linked": true,
+    "depositorPath": "individual"
+  }
+}
