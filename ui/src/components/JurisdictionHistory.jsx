@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePublicClient, useWatchContractEvent } from "wagmi";
 import { parseAbiItem } from "viem";
-import { CAT_VAULT_ABI, EXPLORER_URL, bytes2ToIso } from "../config/wagmi";
+import { CAT_VAULT_ABI, EXPLORER_URL, VAULT_DEPLOY_BLOCK, bytes2ToIso } from "../config/wagmi";
 import { maskAddress } from "../utils/format";
+import { getLogsChunked } from "../utils/logs";
 import { IconExternalLink } from "./icons";
 
 function ExplorerLink({ href, children, title }) {
@@ -18,6 +19,7 @@ export default function JurisdictionHistory({ vaultAddress }) {
   const publicClient = usePublicClient();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const appendEntry = (log) => {
     const { account, jurisdiction, allowed, operation, depositorPath, transactionHash, blockNumber } =
@@ -55,12 +57,15 @@ export default function JurisdictionHistory({ vaultAddress }) {
 
     async function loadHistory() {
       setLoading(true);
+      setLoadError("");
       try {
-        const logs = await publicClient.getLogs({
+        const latestBlock = await publicClient.getBlockNumber();
+        const fromBlock = VAULT_DEPLOY_BLOCK > 0n ? VAULT_DEPLOY_BLOCK : latestBlock > 500n ? latestBlock - 500n : 0n;
+        const logs = await getLogsChunked(publicClient, {
           address: vaultAddress,
           event: jurisdictionCheckedEvent,
-          fromBlock: 0n,
-          toBlock: "latest",
+          fromBlock,
+          toBlock: latestBlock,
         });
 
         if (cancelled) return;
@@ -80,8 +85,11 @@ export default function JurisdictionHistory({ vaultAddress }) {
           .slice(0, 50);
 
         setEntries(mapped);
-      } catch {
-        if (!cancelled) setEntries([]);
+      } catch (err) {
+        if (!cancelled) {
+          setEntries([]);
+          setLoadError(err?.shortMessage || err?.message || "Failed to load event history from RPC.");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -127,7 +135,10 @@ export default function JurisdictionHistory({ vaultAddress }) {
           <p>Loading event history…</p>
         </div>
       )}
-      {!loading && entries.length === 0 && (
+      {!loading && loadError && (
+        <p className="jurisdiction-meta text-warn">{loadError}</p>
+      )}
+      {!loading && !loadError && entries.length === 0 && (
         <p className="jurisdiction-meta">No jurisdiction checks recorded yet for this vault.</p>
       )}
       {!loading && entries.length > 0 && (

@@ -19,13 +19,14 @@ export const redbellyTestnet = defineChain({
 
 export const config = getDefaultConfig({
   appName: "CAT Vault Admin",
-  projectId: "b1e42d0cbe4a1c4890e948839b2e7e18",
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "b1e42d0cbe4a1c4890e948839b2e7e18",
   chains: [redbellyTestnet],
 });
 
 export const EXPLORER_URL = redbellyTestnet.blockExplorers.default.url;
 
 export const VAULT_ADDRESS = import.meta.env.VITE_VAULT_ADDRESS || "";
+export const VAULT_DEPLOY_BLOCK = BigInt(import.meta.env.VITE_VAULT_DEPLOY_BLOCK || "0");
 
 export const CAT_VAULT_ABI = [
   {
