@@ -7,8 +7,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=plastic)](https://www.typescriptlang.org/)
 [![wagmi](https://img.shields.io/badge/wagmi-2.x-000000?style=plastic)](https://wagmi.sh/)
 [![OpenZeppelin](https://img.shields.io/badge/OpenZeppelin-4.9-4E5EE4?logo=openzeppelin&logoColor=white&style=plastic)](https://openzeppelin.com/contracts/)
-[![Tests](https://img.shields.io/badge/tests-40%20passing-success?style=plastic)](#quick-start)
-[![Coverage](https://img.shields.io/badge/lines-94%25%20|%20branch%2096%25-brightgreen?style=plastic)](#quick-start)
+[![Tests](https://img.shields.io/badge/tests-46%20passing-success?style=plastic)](#quick-start)
+[![Coverage](https://img.shields.io/badge/lines-95%25%20|%20branch%2096%25-brightgreen?style=plastic)](#quick-start)
 [![Live dashboard](https://img.shields.io/badge/Dashboard-redbelly--dao--task2.vercel.app-c41e3a?style=plastic)](https://redbelly-dao-task2.vercel.app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=plastic)](#license)
 
@@ -28,8 +28,10 @@ Community submission for **Redbelly DAO Task 2** - Compliant Asset Tokenization 
 | Admin-configurable allowlist (default deny) | `allowedJurisdictions`, `setJurisdictionAllowed` |
 | US allowed / SG blocked benchmark | `test/CATVault.test.ts`, testnet demo |
 | `JurisdictionChecked` + `depositorPath` on deposit/withdraw | `CATVault.sol`, tests, UI history panel |
-| Admin dashboard wired to on-chain functions | `ui/` |
-| Unit tests, coverage >= 90% lines | `npm test` (40/40), `npm run coverage` (94% lines, **96% branch**; CATVault 100% branch) |
+| Admin dashboard wired to on-chain functions | `ui/` (Tailwind + overflow-safe tiles) |
+| Unit tests, coverage >= 90% lines | `npm test` (46/46), `npm run coverage` |
+| COMPLIANCE_ROLE (AccessControl, not Ownable) | `CATVault.sol` |
+| Jurisdiction cache | `cachedJurisdictions` |
 | 8-10 page guide + Individual SDK trade-offs | [`docs/guide.md`](docs/guide.md) |
 | Testnet deploy | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [live dashboard](https://redbelly-dao-task2.vercel.app) |
 
@@ -38,8 +40,8 @@ Community submission for **Redbelly DAO Task 2** - Compliant Asset Tokenization 
 ```bash
 npm install
 npm run compile
-npm test                 # 40 tests
-npm run coverage         # 94% lines, 96% branch; CATVault + Helper 100% lines/funcs
+npm test                 # 46 tests
+npm run coverage         # 95% lines, 96% branch; CATVault 100% stmts/branch/funcs/lines
 ```
 
 Deploy to testnet (requires `PRIVATE_KEY` in `.env` - see `.env.example`):
@@ -70,13 +72,13 @@ Or open the [live dashboard](https://redbelly-dao-task2.vercel.app). In **Jurisd
 
 | Contract | Address |
 |----------|---------|
-| CATVault | [`0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D`](https://redbelly.testnet.routescan.io/address/0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D) |
-| MockAsset (catUSD) | [`0xE5278DB20f95e582f9Eff5cb30C414944847EEbC`](https://redbelly.testnet.routescan.io/address/0xE5278DB20f95e582f9Eff5cb30C414944847EEbC) |
-| MockBusinessPermissionRegistry | [`0xf6e36ecBe3094872c164654aE6B9F98f43B76b42`](https://redbelly.testnet.routescan.io/address/0xf6e36ecBe3094872c164654aE6B9F98f43B76b42) |
-| MockIndividualPermissionRegistry | [`0xDED51Cbba458Ba7F01A011fB3525c5294596383A`](https://redbelly.testnet.routescan.io/address/0xDED51Cbba458Ba7F01A011fB3525c5294596383A) |
-| Vault owner (deployer) | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
+| CATVault | [`0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A`](https://redbelly.testnet.routescan.io/address/0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A) |
+| MockAsset (catUSD) | [`0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F`](https://redbelly.testnet.routescan.io/address/0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F) |
+| MockBusinessPermissionRegistry | [`0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A`](https://redbelly.testnet.routescan.io/address/0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A) |
+| MockIndividualPermissionRegistry | [`0x8832dc665Cb7164e9C8A6A34230630c071313E44`](https://redbelly.testnet.routescan.io/address/0x8832dc665Cb7164e9C8A6A34230630c071313E44) |
+| Vault DEFAULT_ADMIN / COMPLIANCE (deployer) | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
 
-**Verified demo:** US business deposit [0xa9a308…6aad](https://redbelly.testnet.routescan.io/tx/0xa9a3085748a8ebd4aefdefe4996ad15bba70b8ab8c5e38615517e09a3dfe6aad); US individual deposit [0xf45248…31f7](https://redbelly.testnet.routescan.io/tx/0xf452480bea34f8106a5da1428cba37ebaac7e8839dfc0924c2ed0344093331f7); SG deposit reverts `JurisdictionBlocked`.
+**Verified demo:** US business deposit [0x65e907…9ea7](https://redbelly.testnet.routescan.io/tx/0x65e9070346bf154ba3a6e3a16070f6f1e6f1e8bebbc5e1b5041be9db05709ea7); US individual deposit [0xd6af0e…8066](https://redbelly.testnet.routescan.io/tx/0xd6af0edb05a3d4d6974e935bfdc43903ee1cd17bed5af722603ed708c4398066); SG deposit reverts `JurisdictionBlocked`.
 
 Explorer: https://redbelly.testnet.routescan.io
 

@@ -97,7 +97,7 @@ function AllowlistLivePanel({ vaultAddress, selectedCode, onSelect, refreshKey }
         <div className="blocklist-empty">
           <span className="status-badge warn">No jurisdictions allowed</span>
           <p className="blocklist-empty-text">
-            All deposits revert until the vault owner allows at least one region.
+            All deposits revert until COMPLIANCE_ROLE allows at least one region.
           </p>
         </div>
       )}
@@ -182,18 +182,25 @@ export default function App() {
   const vaultAddress = useVaultAddress();
   const { address, isConnected } = useAccount();
 
-  const { data: owner } = useReadContract({
+  const { data: complianceRole } = useReadContract({
     address: vaultAddress,
     abi: CAT_VAULT_ABI,
-    functionName: "owner",
+    functionName: "COMPLIANCE_ROLE",
     query: { enabled: !!vaultAddress },
   });
 
-  const isOwner =
-    isConnected && owner && address && owner.toLowerCase() === address.toLowerCase();
+  const { data: hasComplianceRole } = useReadContract({
+    address: vaultAddress,
+    abi: CAT_VAULT_ABI,
+    functionName: "hasRole",
+    args: [complianceRole, address],
+    query: { enabled: !!vaultAddress && !!complianceRole && !!address },
+  });
+
+  const isCompliance = Boolean(isConnected && hasComplianceRole);
 
   return (
-    <div className="app-wrapper app-expanded">
+    <div className="app-wrapper app-expanded min-w-0 w-full max-w-[1520px]">
       <header className="page-header">
         <h1 className="page-title">CAT Vault Admin</h1>
         <p className="page-subtitle">
@@ -201,11 +208,11 @@ export default function App() {
         </p>
       </header>
 
-      <div className="widget-container">
-        <div className="widget-header">
-          <div className="widget-logo">
+      <div className="widget-container min-w-0 overflow-hidden">
+        <div className="widget-header flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <div className="widget-logo min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
             <Logo />
-            CAT Vault Task 2
+            <span className="min-w-0 [overflow-wrap:anywhere]">CAT Vault Task 2</span>
           </div>
           {isConnected && (
             <ConnectButton chainStatus="icon" showBalance={false} accountStatus="avatar" />
@@ -224,7 +231,7 @@ export default function App() {
             </div>
           )}
 
-          <div className="dashboard-grid">
+          <div className="dashboard-grid min-w-0">
             <section className="dashboard-panel dashboard-panel-overview">
               <p className="widget-app-name">Vault overview</p>
               <VaultOverview vaultAddress={vaultAddress} />
@@ -240,8 +247,8 @@ export default function App() {
                   <span className="wallet-address" title={address}>
                     {maskAddress(address)}
                   </span>
-                  <span className={`status-badge ${isOwner ? "ok" : "warn"}`}>
-                    {isOwner ? "Vault owner" : "Read-only"}
+                  <span className={`status-badge ${isCompliance ? "ok" : "warn"}`}>
+                    {isCompliance ? "COMPLIANCE_ROLE" : "Read-only"}
                   </span>
                 </div>
               ) : (
@@ -249,8 +256,9 @@ export default function App() {
                   <div className="info-block info-block-compact">
                     <div className="info-block-title">Connect wallet</div>
                     <p className="info-block-text">
-                      Connect the vault owner wallet to update the jurisdiction allowlist. Jurisdiction
-                      preview and transaction history work without a wallet.
+                      Connect a wallet with COMPLIANCE_ROLE (multisig or timelock in production)
+                      to update the jurisdiction allowlist. Jurisdiction preview and transaction
+                      history work without a wallet.
                     </p>
                   </div>
                   <div className="connect-btn-wrapper">
@@ -265,19 +273,19 @@ export default function App() {
                 </div>
               )}
 
-              {!isOwner && isConnected && owner && (
+              {!isCompliance && isConnected && (
                 <div className="info-block info-block-hint admin-panel-block">
-                  <div className="info-block-title">Owner required for transactions</div>
+                  <div className="info-block-title">COMPLIANCE_ROLE required</div>
                   <p className="info-block-text">
-                    Allowlist changes require vault owner{" "}
-                    <code title={owner}>{maskAddress(owner)}</code>.
+                    Allowlist changes require OpenZeppelin <code>AccessControl</code> role{" "}
+                    <code>COMPLIANCE_ROLE</code> (grantable to a multisig or timelock).
                   </p>
                 </div>
               )}
 
               <AllowlistManager
                 vaultAddress={vaultAddress}
-                isOwner={isOwner}
+                isCompliance={isCompliance}
                 isConnected={isConnected}
               />
 
@@ -347,16 +355,16 @@ function VaultOverview({ vaultAddress }) {
   return (
     <div className="admin-panel-block">
       <p className="overview-lead">Read-only ERC-4626 metrics from the deployed CAT vault.</p>
-      <div className="stat-grid stat-grid-overview">
-        <div className="stat-tile">
-          <span className="stat-tile-label">Total assets (raw)</span>
-          <span className="stat-tile-value">
+      <div className="stat-grid stat-grid-overview min-w-0">
+        <div className="stat-tile min-w-0 overflow-hidden">
+          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Total assets (raw)</span>
+          <span className="stat-tile-value min-w-0 max-w-full truncate">
             {totalAssets !== undefined ? String(totalAssets) : "n/a"}
           </span>
         </div>
-        <div className="stat-tile">
-          <span className="stat-tile-label">Vault</span>
-          <span className="stat-tile-value stat-tile-value-sm">
+        <div className="stat-tile min-w-0 overflow-hidden">
+          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Vault</span>
+          <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {vaultAddress ? (
               <ExplorerLink href={`${EXPLORER_URL}/address/${vaultAddress}`} title={vaultAddress}>
                 {maskAddress(vaultAddress)}
@@ -366,9 +374,9 @@ function VaultOverview({ vaultAddress }) {
             )}
           </span>
         </div>
-        <div className="stat-tile">
-          <span className="stat-tile-label">Business registry</span>
-          <span className="stat-tile-value stat-tile-value-sm">
+        <div className="stat-tile min-w-0 overflow-hidden">
+          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Business registry</span>
+          <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {registry ? (
               <ExplorerLink href={`${EXPLORER_URL}/address/${registry}`} title={registry}>
                 {maskAddress(registry)}
@@ -378,9 +386,9 @@ function VaultOverview({ vaultAddress }) {
             )}
           </span>
         </div>
-        <div className="stat-tile">
-          <span className="stat-tile-label">Individual registry</span>
-          <span className="stat-tile-value stat-tile-value-sm">
+        <div className="stat-tile min-w-0 overflow-hidden">
+          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Individual registry</span>
+          <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {individualRegistry ? (
               <ExplorerLink
                 href={`${EXPLORER_URL}/address/${individualRegistry}`}
@@ -406,16 +414,20 @@ function OnChainFunctions() {
       </h3>
       <ul className="function-list">
         <li>
-          <code>setJurisdictionAllowed(bytes2, bool)</code> - owner only
+          <code>setJurisdictionAllowed(bytes2, bool)</code> — COMPLIANCE_ROLE
         </li>
         <li>
-          <code>setJurisdictionAllowedBatch(bytes2[], bool)</code> - owner only
+          <code>setJurisdictionAllowedBatch(bytes2[], bool)</code> — COMPLIANCE_ROLE
+        </li>
+        <li>
+          <code>refreshJurisdictionCache(address)</code> /{" "}
+          <code>invalidateJurisdictionCache(address)</code>
         </li>
         <li>
           <code>checkJurisdiction(address)</code> - returns jurisdiction, allowed, depositorPath
         </li>
         <li>
-          <code>allowedJurisdictions(bytes2)</code> - public view
+          <code>allowedJurisdictions(bytes2)</code> / <code>cachedJurisdictions(address)</code>
         </li>
       </ul>
     </div>
@@ -621,7 +633,7 @@ function JurisdictionPreview({ vaultAddress }) {
   );
 }
 
-function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
+function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
   const [code, setCode] = useState("US");
   const [batchCodes, setBatchCodes] = useState("US,SG,AU");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -722,7 +734,7 @@ function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
           <button
             type="button"
             className="btn-admin"
-            disabled={!isOwner || isPending || confirming || isAllowed}
+            disabled={!isCompliance || isPending || confirming || isAllowed}
             onClick={() => setAllowed(true)}
           >
             Allow {code}
@@ -730,7 +742,7 @@ function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
           <button
             type="button"
             className="btn-admin-secondary"
-            disabled={!isOwner || isPending || confirming || !isAllowed}
+            disabled={!isCompliance || isPending || confirming || !isAllowed}
             onClick={() => setAllowed(false)}
           >
             Deny {code}
@@ -751,7 +763,7 @@ function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
             <button
               type="button"
               className="btn-admin"
-              disabled={!isOwner || isPending || confirming}
+              disabled={!isCompliance || isPending || confirming}
               onClick={() => setBatchAllowed(true)}
             >
               Allow batch
@@ -759,7 +771,7 @@ function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
             <button
               type="button"
               className="btn-admin-secondary"
-              disabled={!isOwner || isPending || confirming}
+              disabled={!isCompliance || isPending || confirming}
               onClick={() => setBatchAllowed(false)}
             >
               Deny batch
@@ -768,7 +780,7 @@ function AllowlistManager({ vaultAddress, isOwner, isConnected }) {
         </div>
 
         {!isConnected && (
-          <p className="footnote">Connect vault owner wallet to submit allowlist transactions.</p>
+          <p className="footnote">Connect a COMPLIANCE_ROLE wallet to submit allowlist transactions.</p>
         )}
         {(isPending || confirming) && (
           <p className="message-warn">Waiting for transaction…</p>

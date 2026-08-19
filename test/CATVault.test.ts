@@ -43,14 +43,25 @@ describe("CATVault", function () {
       expect(await vault.allowedJurisdictions("0x5553")).to.equal(false);
     });
 
-    it("restricts allowlist changes to owner", async function () {
+    it("restricts allowlist changes to COMPLIANCE_ROLE", async function () {
       const { vault, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      const role = await vault.COMPLIANCE_ROLE();
+      const account = usBusinessDepositor.address.toLowerCase();
       await expect(
         vault.connect(usBusinessDepositor).setJurisdictionAllowed("0x5553", true)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
       await expect(
         vault.connect(usBusinessDepositor).setJurisdictionAllowedBatch(["0x5553"], true)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
+    });
+
+    it("lets DEFAULT_ADMIN_ROLE grant COMPLIANCE_ROLE to another account", async function () {
+      const { vault, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      const role = await vault.COMPLIANCE_ROLE();
+      await vault.connect(admin).grantRole(role, usBusinessDepositor.address);
+      await expect(vault.connect(usBusinessDepositor).setJurisdictionAllowed("0x5553", true))
+        .to.emit(vault, "JurisdictionAllowlistUpdated")
+        .withArgs("0x5553", true);
     });
 
     it("benchmark: US allowed, SG blocked when only US is on allowlist", async function () {
@@ -247,6 +258,74 @@ describe("CATVault", function () {
       )
         .to.be.revertedWithCustomError(vault, "JurisdictionBlocked")
         .withArgs(usBusinessDepositor.address, "0x5553");
+    });
+  });
+
+  describe("jurisdiction cache", function () {
+    it("stores parsed ISO code on first successful deposit", async function () {
+      const { vault, asset, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      const amount = ethers.parseUnits("25", 6);
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount);
+
+      await expect(vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address))
+        .to.emit(vault, "JurisdictionCacheUpdated")
+        .withArgs(usBusinessDepositor.address, "0x5553", "business");
+
+      expect(await vault.cachedJurisdictions(usBusinessDepositor.address)).to.equal("0x5553");
+      expect(await vault.cachedDepositorPath(usBusinessDepositor.address)).to.equal("business");
+    });
+
+    it("skips re-parse on subsequent withdraw after registry unlink", async function () {
+      const { vault, asset, admin, businessRegistry, usBusinessDepositor } =
+        await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      const amount = ethers.parseUnits("40", 6);
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount);
+      await vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address);
+
+      await businessRegistry.unlinkBusiness(usBusinessDepositor.address);
+      await expect(vault.checkJurisdiction(usBusinessDepositor.address)).to.be.revertedWithCustomError(
+        vault,
+        "JurisdictionParseFailed"
+      );
+
+      await expect(
+        vault
+          .connect(usBusinessDepositor)
+          .withdraw(amount, usBusinessDepositor.address, usBusinessDepositor.address)
+      )
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(usBusinessDepositor.address, "0x5553", true, "withdraw", "business");
+    });
+
+    it("refreshJurisdictionCache warms storage without a deposit", async function () {
+      const { vault, usIndividualDepositor } = await loadFixture(deployVaultFixture);
+      expect(await vault.cachedJurisdictions(usIndividualDepositor.address)).to.equal("0x0000");
+
+      await vault.refreshJurisdictionCache(usIndividualDepositor.address);
+      expect(await vault.cachedJurisdictions(usIndividualDepositor.address)).to.equal("0x5553");
+      expect(await vault.cachedDepositorPath(usIndividualDepositor.address)).to.equal("individual");
+    });
+
+    it("COMPLIANCE_ROLE can invalidate a stale cache", async function () {
+      const { vault, admin, businessRegistry, usBusinessDepositor } =
+        await loadFixture(deployVaultFixture);
+      await vault.refreshJurisdictionCache(usBusinessDepositor.address);
+      await businessRegistry.unlinkBusiness(usBusinessDepositor.address);
+
+      await vault.connect(admin).invalidateJurisdictionCache(usBusinessDepositor.address);
+      expect(await vault.cachedJurisdictions(usBusinessDepositor.address)).to.equal("0x0000");
+      expect(await vault.cachedDepositorPath(usBusinessDepositor.address)).to.equal("");
+    });
+
+    it("rejects cache invalidation without COMPLIANCE_ROLE", async function () {
+      const { vault, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      const role = await vault.COMPLIANCE_ROLE();
+      const account = usBusinessDepositor.address.toLowerCase();
+      await expect(
+        vault.connect(usBusinessDepositor).invalidateJurisdictionCache(usBusinessDepositor.address)
+      ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
     });
   });
 

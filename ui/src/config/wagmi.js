@@ -30,11 +30,56 @@ export const VAULT_DEPLOY_BLOCK = BigInt(import.meta.env.VITE_VAULT_DEPLOY_BLOCK
 
 export const CAT_VAULT_ABI = [
   {
-    name: "owner",
+    name: "COMPLIANCE_ROLE",
     type: "function",
     stateMutability: "view",
     inputs: [],
-    outputs: [{ type: "address" }],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    name: "DEFAULT_ADMIN_ROLE",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ type: "bytes32" }],
+  },
+  {
+    name: "hasRole",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    name: "cachedJurisdictions",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "bytes2" }],
+  },
+  {
+    name: "cachedDepositorPath",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "string" }],
+  },
+  {
+    name: "refreshJurisdictionCache",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "invalidateJurisdictionCache",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [],
   },
   {
     name: "asset",
@@ -101,6 +146,15 @@ export const CAT_VAULT_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ type: "address" }],
+  },
+  {
+    type: "event",
+    name: "JurisdictionCacheUpdated",
+    inputs: [
+      { indexed: true, name: "account", type: "address" },
+      { indexed: true, name: "jurisdiction", type: "bytes2" },
+      { indexed: false, name: "depositorPath", type: "string" },
+    ],
   },
   {
     type: "event",

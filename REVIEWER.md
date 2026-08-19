@@ -14,8 +14,10 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 | Denied deposit reverts with jurisdiction error | `JurisdictionBlocked(account, jurisdiction)`; tests + testnet demo |
 | Allowed deposit succeeds | tests + testnet deposit txs (business + individual paths) |
 | `JurisdictionChecked` on every deposit and withdraw (with `depositorPath`) | `CATVault._enforceJurisdiction`; tests; UI history panel |
-| Admin dashboard reflects on-chain admin functions | `ui/` (allowlist, preview, **Jurisdiction check history**) |
-| Unit tests, >= 90% line coverage | `npm test` (40/40), `npm run coverage` (94% lines, **96% branch**; CATVault 100% branch) |
+| Admin dashboard reflects on-chain admin functions | `ui/` (allowlist, preview, **Jurisdiction check history**, Tailwind layout) |
+| Unit tests, >= 90% line coverage | `npm test` (46/46), `npm run coverage` |
+| **COMPLIANCE_ROLE (AccessControl)** | `CATVault` — `onlyRole(COMPLIANCE_ROLE)` for allowlist; grantable to multisig/timelock |
+| **Jurisdiction cache** | `cachedJurisdictions`; first parse stored, later txs skip `JurisdictionHelper` loops |
 | Documentation 8-10 pages + Individual SDK trade-offs | [`docs/guide.md`](docs/guide.md) §3.4 |
 | Deploy Redbelly Testnet | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`deployments/redbellyTestnet.json`](deployments/redbellyTestnet.json) |
 
@@ -23,7 +25,15 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 
 ---
 
-## Revision summary (reviewer feedback, July 2026)
+## Revision summary (reviewer feedback, August 2026)
+
+| Reviewer request | Status |
+|------------------|--------|
+| Tailwind / component layout + overflow-wrap for labels | Done — Tailwind CSS + `overflow-wrap: anywhere` on stat tiles / containers |
+| AccessControl + `COMPLIANCE_ROLE` (deprecate Ownable) | Done — allowlist + cache invalidation gated by `COMPLIANCE_ROLE` |
+| Jurisdiction cache `mapping(address => bytes2)` | Done — first parse cached; `refresh` / `invalidate` |
+
+### Previous revision (July 2026)
 
 | Reviewer request | Status |
 |------------------|--------|
@@ -31,7 +41,7 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 | IndividualOnboardingSDK path + tests | Done — dual-path helper, Demo4, unit tests |
 | UI transaction history (`JurisdictionChecked`) | Done — `ui/src/components/JurisdictionHistory.jsx` |
 | Expand `docs/guide.md` + Individual trade-offs | Done — §3.4, updated coverage table |
-| Coverage report + helper lines 63, 131 | Done — 40 tests; branch **96%** (was 64%); CATVault 100% branch |
+| Coverage report + helper lines 63, 131 | Done — branch **96%+**; CATVault 100% branch |
 
 ---
 
@@ -68,8 +78,8 @@ wallet -> Business registry (first) OR Individual registry (second)
 ```bash
 cd task2
 npm install
-npm test              # 40 tests
-npm run coverage      # 94% lines, 96% branch; CATVault 100% branch
+npm test              # 46 tests
+npm run coverage      # 95% lines, 96% branch; CATVault 100%
 ```
 
 ## Reviewer walkthrough
@@ -80,6 +90,7 @@ npm run coverage      # 94% lines, 96% branch; CATVault 100% branch
 2. **Jurisdiction preview:** `Demo1` → US · allowed · business; `Demo2` → SG · blocked; `Demo4` → US · allowed · individual
 3. **Active allowlist:** only `US` allowed
 4. **Jurisdiction check history:** rows from verified deposit txs below
+5. Labels such as **Individual registry** wrap instead of overflowing the tile
 
 No wallet connect required for preview/history.
 
@@ -100,23 +111,23 @@ npm test && npm run coverage
 
 ---
 
-## Testnet contracts (revision deploy)
+## Testnet contracts (AccessControl + cache deploy)
 
 | Contract | Address |
 |----------|---------|
-| CATVault | [`0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D`](https://redbelly.testnet.routescan.io/address/0xC8A405e8CEB8c2dd2dFC03f1d7DdF9f20bEd964D) |
-| MockAsset (catUSD) | [`0xE5278DB20f95e582f9Eff5cb30C414944847EEbC`](https://redbelly.testnet.routescan.io/address/0xE5278DB20f95e582f9Eff5cb30C414944847EEbC) |
-| MockBusinessPermissionRegistry | [`0xf6e36ecBe3094872c164654aE6B9F98f43B76b42`](https://redbelly.testnet.routescan.io/address/0xf6e36ecBe3094872c164654aE6B9F98f43B76b42) |
-| MockIndividualPermissionRegistry | [`0xDED51Cbba458Ba7F01A011fB3525c5294596383A`](https://redbelly.testnet.routescan.io/address/0xDED51Cbba458Ba7F01A011fB3525c5294596383A) |
-| Vault owner | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
+| CATVault | [`0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A`](https://redbelly.testnet.routescan.io/address/0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A) |
+| MockAsset (catUSD) | [`0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F`](https://redbelly.testnet.routescan.io/address/0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F) |
+| MockBusinessPermissionRegistry | [`0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A`](https://redbelly.testnet.routescan.io/address/0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A) |
+| MockIndividualPermissionRegistry | [`0x8832dc665Cb7164e9C8A6A34230630c071313E44`](https://redbelly.testnet.routescan.io/address/0x8832dc665Cb7164e9C8A6A34230630c071313E44) |
+| Vault DEFAULT_ADMIN / COMPLIANCE (deployer) | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
 
 ### Verified demo transactions
 
 | Scenario | Tx / result |
 |----------|-------------|
-| US business deposit (allowed) | [0xa9a308…6aad](https://redbelly.testnet.routescan.io/tx/0xa9a3085748a8ebd4aefdefe4996ad15bba70b8ab8c5e38615517e09a3dfe6aad) |
+| US business deposit (allowed) | [0x65e907…9ea7](https://redbelly.testnet.routescan.io/tx/0x65e9070346bf154ba3a6e3a16070f6f1e6f1e8bebbc5e1b5041be9db05709ea7) |
 | SG business deposit (denied) | Reverted `JurisdictionBlocked` |
-| US individual deposit (allowed) | [0xf45248…31f7](https://redbelly.testnet.routescan.io/tx/0xf452480bea34f8106a5da1428cba37ebaac7e8839dfc0924c2ed0344093331f7) |
+| US individual deposit (allowed) | [0xd6af0e…8066](https://redbelly.testnet.routescan.io/tx/0xd6af0edb05a3d4d6974e935bfdc43903ee1cd17bed5af722603ed708c4398066) |
 
 Details: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 
@@ -135,4 +146,4 @@ Details: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 
 - **No Averer API key:** SDK widgets not embedded; mock registries + `seed:demo` substitute for testnet KYB/KYC.
 - **Mock registries:** not production Bootstrap permissions; production adapters included in repo.
-- **Allowlist admin:** only vault **owner** can submit allowlist transactions on testnet.
+- **Allowlist admin:** deployer holds `COMPLIANCE_ROLE` on testnet; grant to a multisig/timelock in production.

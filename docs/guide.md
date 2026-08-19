@@ -26,7 +26,7 @@ Every deposit and withdrawal:
 |------|----------------|
 | ERC-4626 composability | Inherit OpenZeppelin `ERC4626` / `ERC20` shares |
 | On-chain jurisdiction source | Business Identifier fields (`identifierType`, `identifier`, `businessAddress`) |
-| Admin-configurable allowlist (default deny) | `mapping(bytes2 => bool) allowedJurisdictions` + owner functions |
+| Admin-configurable allowlist (default deny) | `mapping(bytes2 => bool) allowedJurisdictions` + `COMPLIANCE_ROLE` |
 | Dual depositor paths | Business Identifier (institutional) + Individual Identifier (retail) |
 | Clear failure modes | Custom errors; no silent parsing failures |
 | Observable compliance | `JurisdictionChecked` on every deposit/withdraw |
@@ -142,7 +142,7 @@ We deliberately avoid storing jurisdiction in a separate off-chain database. Ins
 
 Unlike a blocklist (deny specific regions, allow everything else), this vault implements **default deny**:
 
-- `allowedJurisdictions[code] == false` for all codes until the owner explicitly allows them.
+- `allowedJurisdictions[code] == false` for all codes until `COMPLIANCE_ROLE` explicitly allows them.
 - Benchmark scenario (reviewer revision): `allowedJurisdictions["US"] = true` only → US deposits succeed, SG deposits revert.
 - Regulatory framing: suitable for products licensed in **enumerated** jurisdictions (e.g. Reg D / qualified jurisdictions only).
 
@@ -160,22 +160,35 @@ Using issuer-verified registration data ties restrictions to **the same source o
 
 ### 5.1 CATVault
 
-`CATVault` extends OpenZeppelin `ERC4626` and `Ownable`.
+`CATVault` extends OpenZeppelin `ERC4626` and `AccessControl` (not `Ownable`).
 
 **Immutable dependencies:**
 
 - `IBusinessPermissionRegistry businessRegistry`
 - `IIndividualPermissionRegistry individualRegistry`
 
-**Admin functions (owner):**
+**Roles:**
+
+- `DEFAULT_ADMIN_ROLE` — grant/revoke roles (deployer; can be moved to a multisig)
+- `COMPLIANCE_ROLE` — allowlist mutations and cache invalidation (grantable to a multisig or timelock)
+
+**Admin functions (`COMPLIANCE_ROLE`):**
 
 - `setJurisdictionAllowed(bytes2 jurisdiction, bool allowed)`
 - `setJurisdictionAllowedBatch(bytes2[] jurisdictions, bool allowed)`
+- `invalidateJurisdictionCache(address account)`
+
+**Cache (gas):**
+
+- `mapping(address => bytes2) cachedJurisdictions` — first parse is stored; later deposits/withdrawals read storage instead of looping through `JurisdictionHelper`
+- `refreshJurisdictionCache(address)` — public warm/refresh after KYC metadata change
+- `checkJurisdiction` remains a **live** preview (does not read the cache) so the admin UI shows current registry data
 
 **Public views:**
 
 - `checkJurisdiction(address account) → (bytes2 jurisdiction, bool allowed, string depositorPath)`
 - `allowedJurisdictions(bytes2)`
+- `cachedJurisdictions(address)` / `cachedDepositorPath(address)`
 
 **Hooks overridden:**
 
@@ -252,7 +265,7 @@ The React app in `ui/` is a **mockup wired to real contract ABIs**:
 | Allow / deny | `setJurisdictionAllowed`, `setJurisdictionAllowedBatch` |
 | Jurisdiction check history | `JurisdictionChecked` event logs (account, ISO, status, op, path) |
 
-Configure `VITE_VAULT_ADDRESS` after deployment. Only the vault **owner** wallet can submit allowlist transactions; other connected wallets can still preview jurisdiction outcomes and view transaction history.
+Configure `VITE_VAULT_ADDRESS` after deployment. Allowlist transactions require `COMPLIANCE_ROLE` (the deployer is granted it at construct time; production should grant it to a multisig or timelock). Other connected wallets can still preview jurisdiction outcomes and view transaction history.
 
 ### 7.1 Reviewer quick demo (testnet add-on)
 
@@ -320,7 +333,8 @@ Test suite: Hardhat + TypeScript + `@nomicfoundation/hardhat-network-helpers`.
 - **Dual-path:** business depositor, individual depositor, business-preferred when both linked
 - Allowed jurisdiction deposit / withdraw + `JurisdictionChecked` with `depositorPath`
 - Denied jurisdiction deposit revert with `JurisdictionBlocked`
-- Allowlist admin ACL (owner-only)
+- Allowlist admin ACL (`COMPLIANCE_ROLE` / AccessControl)
+- Jurisdiction cache populate, hit after unlink, refresh, invalidate
 - ISO3166-1, address tail (line 131), short identifier revert (line 63), parenthesized code parsing
 - Parse failure reverts
 - `RedbellyBusinessRegistry` with configured BusinessPermission
@@ -333,7 +347,8 @@ Test suite: Hardhat + TypeScript + `@nomicfoundation/hardhat-network-helpers`.
 | 1 | allowlist | allow / revoke jurisdiction | admin allowlist mutation |
 | 2 | allowlist | rejects zero jurisdiction code | input validation |
 | 3 | allowlist | batch allowlist updates | `setJurisdictionAllowedBatch` |
-| 4 | allowlist | restricts changes to owner | `onlyOwner` ACL |
+| 4 | allowlist | restricts changes to COMPLIANCE_ROLE | AccessControl ACL |
+| 4b | allowlist | DEFAULT_ADMIN can grant COMPLIANCE_ROLE | role delegation to multisig |
 | 5 | allowlist | **US allowed, SG blocked benchmark** | deliverable 1 (default deny) |
 | 6 | dual-path | resolves business depositor path | deliverable 4 |
 | 7 | dual-path | resolves individual depositor path | deliverable 4 |
@@ -368,14 +383,14 @@ npm test
 npm run coverage
 ```
 
-**Latest coverage (revision, 40 tests passing):**
+**Latest coverage (revision, 46 tests passing):**
 
 | Metric | All files | CATVault.sol | JurisdictionHelper.sol |
 |--------|-----------|--------------|------------------------|
-| Statements | **95.7%** | **100%** | **100%** |
-| Branches | **96.2%** | **100%** | **95.7%** |
-| Functions | 84.3% | **100%** | **100%** |
-| Lines | **94.0%** | **100%** | **100%** |
+| Statements | **96.1%** | **100%** | **100%** |
+| Branches | **96.5%** | **100%** | **95.7%** |
+| Functions | 85.7% | **100%** | **100%** |
+| Lines | **94.7%** | **100%** | **100%** |
 
 Statement, branch, function, and line coverage are all reported per reviewer request. Core contracts (`CATVault.sol`, `JurisdictionHelper.sol`) reach **100% line, function, and branch coverage** on `CATVault` and **≥95% branch** on `JurisdictionHelper` (overall branch **96.2%**, up from ~64% pre-revision). Tests explicitly cover helper edge branches including short ISO3166-1 identifier revert, two-letter address-tail parsing, `ISO3166`/`COUNTRY` identifier types, full country-name aliases (`United States`, `United Kingdom`, `South Korea`, `United Arab Emirates`), empty-address fall-through, and dual-path resolution. The `% Functions` figure for “All files” is diluted only by unused view getters on mock contracts, not production code.
 
@@ -417,7 +432,8 @@ If you deploy your own registry, link wallets via Hardhat instead - the UI alias
 
 ## 10. Security considerations
 
-- **Owner centralization:** Allowlist admin is `Ownable`; production should use multisig or timelock.
+- **Role-based access:** Allowlist admin is `COMPLIANCE_ROLE` (OpenZeppelin `AccessControl`). Deployer receives both `DEFAULT_ADMIN_ROLE` and `COMPLIANCE_ROLE`; production should grant `COMPLIANCE_ROLE` to a multisig or timelock and revoke it from the EOA.
+- **Jurisdiction cache staleness:** Repeat deposits/withdrawals use `cachedJurisdictions` and skip `JurisdictionHelper` parsing. After KYC metadata changes, call `refreshJurisdictionCache` or `invalidateJurisdictionCache`.
 - **Registry trust:** Vault trusts both permission registries and Identifier contents verified by accredited issuers.
 - **Parsing ambiguity:** Unknown address formats revert rather than silently allowing; operators must ensure KYB records include ISO3166-1 or parseable addresses.
 - **Upgradeability:** Vault is non-upgradeable; registry/Business Identifier upgrades on Redbelly side are independent.
@@ -430,7 +446,7 @@ If you deploy your own registry, link wallets via Hardhat instead - the UI alias
 - Integrate live `businessPermission` and `individualPermission` on testnet when Bootstrap registers them.
 - Optional ZK eligibility gating (Task 3 `Permission.isAllowed`) as an additional modifier.
 - Extended ISO country map via compact merkle store for gas optimization.
-- Timelock + events indexing subgraph for compliance audit trails.
+- Subgraph indexing of `JurisdictionChecked` / `JurisdictionCacheUpdated` for compliance audit trails.
 
 ---
 
@@ -445,4 +461,4 @@ If you deploy your own registry, link wallets via Hardhat instead - the UI alias
 
 ---
 
-*Document version 1.1 - CAT Vault Task 2 revision (allowlist + dual-path)*
+*Document version 1.2 - CAT Vault Task 2 revision (AccessControl + jurisdiction cache + Tailwind UI)*

@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 *,
 *::before,
 *::after {
@@ -126,6 +130,7 @@ body::before {
 
 .widget-container {
   width: 100%;
+  min-width: 0;
   border-radius: 16px;
   overflow: hidden;
   background: linear-gradient(145deg, #ecebec 0%, #d9d9d9 100%);
@@ -184,6 +189,8 @@ body::before {
 .widget-content {
   padding: 24px 28px 28px;
   background: linear-gradient(145deg, #ecebec 0%, #d9d9d9 100%);
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .dashboard-grid {
@@ -419,15 +426,24 @@ body::before {
   letter-spacing: 0.4px;
   margin-bottom: 6px;
   line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .stat-tile-value {
+  display: block;
   font-size: 14px;
   font-weight: 700;
   color: #142530;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .stat-tile-value-sm {
@@ -1145,6 +1161,8 @@ body::before {
   color: #848b91;
   line-height: 1.65;
   font-size: 13px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .function-list code {
@@ -1350,6 +1368,8 @@ body::before {
 
 .history-table td {
   color: #142530;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .history-table th {

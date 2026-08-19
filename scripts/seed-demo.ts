@@ -125,6 +125,8 @@ async function main() {
 
     await (await businessRegistry.linkBusiness(admin.address, await sgBusiness.getAddress())).wait();
     console.log("Relinked deployer to SG business identifier…");
+    await (await vault.connect(admin).invalidateJurisdictionCache(admin.address)).wait();
+    console.log("Invalidated jurisdiction cache so the next deposit re-parses as SG…");
 
     console.log("Blocked SG deposit (expect revert)…");
     try {
