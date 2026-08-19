@@ -355,15 +355,19 @@ function VaultOverview({ vaultAddress }) {
   return (
     <div className="admin-panel-block">
       <p className="overview-lead">Read-only ERC-4626 metrics from the deployed CAT vault.</p>
-      <div className="stat-grid stat-grid-overview min-w-0">
+      <div className="stat-grid stat-grid-overview grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="stat-tile min-w-0 overflow-hidden">
-          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Total assets (raw)</span>
+          <span className="stat-tile-label max-w-full normal-case tracking-normal break-words [overflow-wrap:anywhere]">
+            Total assets (raw)
+          </span>
           <span className="stat-tile-value min-w-0 max-w-full truncate">
             {totalAssets !== undefined ? String(totalAssets) : "n/a"}
           </span>
         </div>
         <div className="stat-tile min-w-0 overflow-hidden">
-          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Vault</span>
+          <span className="stat-tile-label max-w-full normal-case tracking-normal break-words [overflow-wrap:anywhere]">
+            Vault
+          </span>
           <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {vaultAddress ? (
               <ExplorerLink href={`${EXPLORER_URL}/address/${vaultAddress}`} title={vaultAddress}>
@@ -375,7 +379,9 @@ function VaultOverview({ vaultAddress }) {
           </span>
         </div>
         <div className="stat-tile min-w-0 overflow-hidden">
-          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Business registry</span>
+          <span className="stat-tile-label max-w-full normal-case tracking-normal break-words [overflow-wrap:anywhere]">
+            Business registry
+          </span>
           <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {registry ? (
               <ExplorerLink href={`${EXPLORER_URL}/address/${registry}`} title={registry}>
@@ -387,7 +393,9 @@ function VaultOverview({ vaultAddress }) {
           </span>
         </div>
         <div className="stat-tile min-w-0 overflow-hidden">
-          <span className="stat-tile-label break-words [overflow-wrap:anywhere]">Individual registry</span>
+          <span className="stat-tile-label max-w-full normal-case tracking-normal break-words [overflow-wrap:anywhere]">
+            Individual registry
+          </span>
           <span className="stat-tile-value stat-tile-value-sm min-w-0 max-w-full truncate">
             {individualRegistry ? (
               <ExplorerLink
