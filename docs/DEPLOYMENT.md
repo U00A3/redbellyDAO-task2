@@ -6,14 +6,14 @@
 |---------|----------|-----|
 | Redbelly Testnet | 153 | https://governors.testnet.redbelly.network |
 
-## Latest testnet deployment (AccessControl + jurisdiction cache)
+## Latest testnet deployment (events + allow/block + brand kit)
 
 | Contract | Address |
 |----------|---------|
-| CATVault | `0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A` |
-| Asset (catUSD) | `0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F` |
-| MockBusinessPermissionRegistry | `0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A` |
-| MockIndividualPermissionRegistry | `0x8832dc665Cb7164e9C8A6A34230630c071313E44` |
+| CATVault | `0x8BF14cba70f156792bd9313CEdCba05ACd60094F` |
+| Asset (catUSD) | `0xf5D7D92f5C4AfF56F6b5C99c3C119FBCC7E69B1C` |
+| MockBusinessPermissionRegistry | `0x40a0f7B01Ef6A156D6419bB16281916D40caBfc7` |
+| MockIndividualPermissionRegistry | `0x02a4Ac4bea74B5Be9F53C22a312b746Ca0741fda` |
 | Deployer / DEFAULT_ADMIN + COMPLIANCE_ROLE | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
 
 Bootstrap: `0xDAFEA492D9c6733ae3d56b7Ed1ADB60692c98Bc5`
@@ -25,34 +25,21 @@ Full manifest: [`deployments/redbellyTestnet.json`](../deployments/redbellyTestn
 ```bash
 cp .env.example .env   # PRIVATE_KEY + REDBELLY_TESTNET_RPC
 npm run deploy:testnet
-npm run seed:demo      # US-only allowlist, link Demo1–Demo4, verify US ok / SG revert
+npm run seed:demo
 ```
 
 ## Demo results (verified)
 
 | Scenario | Result |
 |----------|--------|
-| **US business deposit** (allowed) | [0x65e907…9ea7](https://redbelly.testnet.routescan.io/tx/0x65e9070346bf154ba3a6e3a16070f6f1e6f1e8bebbc5e1b5041be9db05709ea7) — `depositorPath: business` |
-| **SG business deposit** (denied) | Reverted `JurisdictionBlocked` (US-only allowlist; cache invalidated before retry) |
-| **US individual deposit** (allowed) | [0xd6af0e…8066](https://redbelly.testnet.routescan.io/tx/0xd6af0edb05a3d4d6974e935bfdc43903ee1cd17bed5af722603ed708c4398066) — `depositorPath: individual` |
+| **US business deposit** (allowed) | [0xf3d6b9…bea3](https://redbelly.testnet.routescan.io/tx/0xf3d6b9771f3e78251ea429c92a0b4cb263239905b68e7585ef0af1ab41bebea3) |
+| **SG business deposit** (blocked) | [0x7da923…e436](https://redbelly.testnet.routescan.io/tx/0x7da9233efb9fdefd8c045dc5e07e59ba354756fcaee56191102a6a2cb4e7e436) — receipt includes `JurisdictionChecked(allowed=false)` |
+| **US individual deposit** (allowed) | [0x8d594e…fe5b](https://redbelly.testnet.routescan.io/tx/0x8d594e12c920d7f8eae11d96ff1e2b6c92b0010181011f5523041d185205fe5b) |
 
-Allowlist policy: `setJurisdictionAllowed(US, true)` only — **default deny** for all other jurisdictions.
+Policy: US on allowlist; SG on blocklist. Hardhat gas reporter enabled; cached jurisdiction checks assert `gasUsed <= 100000`.
 
-Note: On Redbelly testnet only permissioned wallets can send transactions. `seed:demo` uses the deployer wallet for on-chain demo calls.
+Set `VITE_VAULT_ADDRESS=0x8BF14cba70f156792bd9313CEdCba05ACd60094F` in Vercel / `ui/.env.production`.
 
-## Reviewer quick demo (UI aliases)
+UI follows the [Task Board brand kit](https://redbelly-dao-taskboard.vercel.app/brand).
 
-After `npm run seed:demo`, the admin UI **Jurisdiction preview** accepts demo aliases:
-
-| Alias | Path | Jurisdiction | Expected (US-only allowlist) |
-|-------|------|--------------|------------------------------|
-| `Demo1` | business | US | allowed |
-| `Demo2` | business | SG | blocked |
-| `Demo3` | — | unlinked | parse failure |
-| `Demo4` | individual | US | allowed |
-
-**Jurisdiction check history** panel lists on-chain `JurisdictionChecked` events (ISO, status, operation, path).
-
-Set `VITE_VAULT_ADDRESS=0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A` in Vercel / `ui/.env.production`.
-
-See `docs/guide.md` §7.1 for the full reviewer walkthrough.
+See `REVIEWER.md` for the walkthrough.

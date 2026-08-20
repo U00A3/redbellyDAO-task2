@@ -82,8 +82,8 @@ function AllowlistLivePanel({ vaultAddress, selectedCode, onSelect, refreshKey }
         )}
       </div>
       <p className="overview-lead">
-        Default deny: only jurisdictions explicitly allowed can deposit or withdraw. All other
-        tracked regions are blocked.
+        Default deny allowlist plus an explicit blocklist. A region must be allowlisted and not
+        blocklisted to deposit or withdraw.
       </p>
 
       {isLoading && (
@@ -151,11 +151,12 @@ function AllowlistLivePanel({ vaultAddress, selectedCode, onSelect, refreshKey }
 
 function Logo() {
   return (
-    <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill="#FA423C" fillOpacity="0.15" />
-      <path d="M8 12h16v2H8v-2zm0 4h16v2H8v-2zm0 4h10v2H8v-2z" fill="#FA423C" />
-      <circle cx="24" cy="20" r="4" stroke="#FA423C" strokeWidth="2" fill="none" />
-    </svg>
+    <img
+      src="/dao-logo-on-dark.png"
+      alt="Redbelly DAO"
+      height={28}
+      style={{ height: 28, width: "auto" }}
+    />
   );
 }
 
@@ -204,7 +205,7 @@ export default function App() {
       <header className="page-header">
         <h1 className="page-title">CAT Vault Admin</h1>
         <p className="page-subtitle">
-          Task 2 · ERC-4626 · Jurisdiction Allowlist · Redbelly Testnet
+          Task 2 · ERC-4626 · Allowlist and blocklist · Redbelly Testnet
         </p>
       </header>
 
@@ -212,7 +213,7 @@ export default function App() {
         <div className="widget-header flex min-w-0 flex-wrap items-center justify-between gap-3">
           <div className="widget-logo min-w-0 max-w-full break-words [overflow-wrap:anywhere]">
             <Logo />
-            <span className="min-w-0 [overflow-wrap:anywhere]">CAT Vault Task 2</span>
+            <span className="min-w-0 [overflow-wrap:anywhere]">CAT Vault</span>
           </div>
           {isConnected && (
             <ConnectButton chainStatus="icon" showBalance={false} accountStatus="avatar" />
@@ -428,6 +429,18 @@ function OnChainFunctions() {
           <code>setJurisdictionAllowedBatch(bytes2[], bool)</code> — COMPLIANCE_ROLE
         </li>
         <li>
+          <code>setJurisdictionBlocked(bytes2, bool)</code> — COMPLIANCE_ROLE
+        </li>
+        <li>
+          <code>setJurisdictionBlockedBatch(bytes2[], bool)</code> — COMPLIANCE_ROLE
+        </li>
+        <li>
+          <code>recordJurisdictionCheck(address, string)</code> — emits check log
+        </li>
+        <li>
+          <code>requireJurisdictionAllowed(address)</code> — reverts JurisdictionBlocked
+        </li>
+        <li>
           <code>refreshJurisdictionCache(address)</code> /{" "}
           <code>invalidateJurisdictionCache(address)</code>
         </li>
@@ -435,7 +448,8 @@ function OnChainFunctions() {
           <code>checkJurisdiction(address)</code> - returns jurisdiction, allowed, depositorPath
         </li>
         <li>
-          <code>allowedJurisdictions(bytes2)</code> / <code>cachedJurisdictions(address)</code>
+          <code>allowedJurisdictions</code> / <code>blockedJurisdictions</code> /{" "}
+          <code>cachedJurisdictions</code>
         </li>
       </ul>
     </div>
@@ -664,6 +678,14 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
     query: { enabled: !!vaultAddress && !!bytes2 },
   });
 
+  const { data: isBlocked, refetch: refetchBlocked } = useReadContract({
+    address: vaultAddress,
+    abi: CAT_VAULT_ABI,
+    functionName: "blockedJurisdictions",
+    args: [bytes2],
+    query: { enabled: !!vaultAddress && !!bytes2 },
+  });
+
   function setAllowed(allowed) {
     if (!vaultAddress || !bytes2) return;
     writeContract({
@@ -671,6 +693,16 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
       abi: CAT_VAULT_ABI,
       functionName: "setJurisdictionAllowed",
       args: [bytes2, allowed],
+    });
+  }
+
+  function setBlocked(blocked) {
+    if (!vaultAddress || !bytes2) return;
+    writeContract({
+      address: vaultAddress,
+      abi: CAT_VAULT_ABI,
+      functionName: "setJurisdictionBlocked",
+      args: [bytes2, blocked],
     });
   }
 
@@ -689,12 +721,28 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
     });
   }
 
+  function setBatchBlocked(blocked) {
+    if (!vaultAddress) return;
+    const codes = batchCodes
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .map((c) => isoToBytes2(c));
+    writeContract({
+      address: vaultAddress,
+      abi: CAT_VAULT_ABI,
+      functionName: "setJurisdictionBlockedBatch",
+      args: [codes, blocked],
+    });
+  }
+
   useEffect(() => {
     if (isSuccess) {
       refetchSelected();
+      refetchBlocked();
       setRefreshKey((k) => k + 1);
     }
-  }, [isSuccess, refetchSelected]);
+  }, [isSuccess, refetchSelected, refetchBlocked]);
 
   const selectedName = JURISDICTION_NAMES[code] || code;
 
@@ -709,12 +757,12 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
 
       <div className="deposit-card admin-panel-block">
         <h3 className="panel-heading" style={{ marginTop: 0 }}>
-          Edit allowlist
+          Edit allowlist and blocklist
         </h3>
         <p className="overview-lead">
           Selected: <strong>{code}</strong> ({selectedName}) -{" "}
-          <span className={`status-badge ${isAllowed ? "ok" : "warn"}`}>
-            {isAllowed ? "allowed" : "denied (default)"}
+          <span className={`status-badge ${isAllowed && !isBlocked ? "ok" : "warn"}`}>
+            {isBlocked ? "blocklisted" : isAllowed ? "allowlisted" : "denied (default)"}
           </span>
         </p>
 
@@ -753,7 +801,26 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
             disabled={!isCompliance || isPending || confirming || !isAllowed}
             onClick={() => setAllowed(false)}
           >
-            Deny {code}
+            Remove allow
+          </button>
+        </div>
+
+        <div className="btn-row" style={{ marginTop: "0.75rem" }}>
+          <button
+            type="button"
+            className="btn-admin-secondary"
+            disabled={!isCompliance || isPending || confirming || isBlocked}
+            onClick={() => setBlocked(true)}
+          >
+            Block {code}
+          </button>
+          <button
+            type="button"
+            className="btn-admin-secondary"
+            disabled={!isCompliance || isPending || confirming || !isBlocked}
+            onClick={() => setBlocked(false)}
+          >
+            Unblock {code}
           </button>
         </div>
 
@@ -785,6 +852,24 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
               Deny batch
             </button>
           </div>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn-admin-secondary"
+              disabled={!isCompliance || isPending || confirming}
+              onClick={() => setBatchBlocked(true)}
+            >
+              Block batch
+            </button>
+            <button
+              type="button"
+              className="btn-admin-secondary"
+              disabled={!isCompliance || isPending || confirming}
+              onClick={() => setBatchBlocked(false)}
+            >
+              Unblock batch
+            </button>
+          </div>
         </div>
 
         {!isConnected && (
@@ -793,7 +878,7 @@ function AllowlistManager({ vaultAddress, isCompliance, isConnected }) {
         {(isPending || confirming) && (
           <p className="message-warn">Waiting for transaction…</p>
         )}
-        {isSuccess && <p className="message-success">Allowlist updated on-chain.</p>}
+        {isSuccess && <p className="message-success">Policy updated on-chain.</p>}
         {error && (
           <p className="message-warn">Error: {error.shortMessage || error.message}</p>
         )}

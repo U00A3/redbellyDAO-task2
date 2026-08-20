@@ -8,8 +8,10 @@ import {
   allowUsOnly,
 } from "./helpers/fixture";
 
+const GAS_LIMIT_JURISDICTION = 100_000n;
+
 describe("CATVault", function () {
-  describe("jurisdiction allowlist (default deny)", function () {
+  describe("jurisdiction allowlist and blocklist", function () {
     it("allows admin to allow and revoke jurisdictions", async function () {
       const { vault, admin } = await loadFixture(deployVaultFixture);
 
@@ -23,18 +25,52 @@ describe("CATVault", function () {
       expect(await vault.allowedJurisdictions("0x5553")).to.equal(false);
     });
 
-    it("rejects zero jurisdiction code", async function () {
+    it("supports explicit blocklist entries", async function () {
+      const { vault, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+
+      await expect(vault.connect(admin).setJurisdictionBlocked("0x5553", true))
+        .to.emit(vault, "JurisdictionBlocklistUpdated")
+        .withArgs("0x5553", true);
+
+      expect(await vault.blockedJurisdictions("0x5553")).to.equal(true);
+      const [, usAllowed] = await vault.checkJurisdiction(usBusinessDepositor.address);
+      expect(usAllowed).to.equal(false);
+    });
+
+    it("blocklist denies even when the same code is on the allowlist", async function () {
+      const { vault, asset, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      await vault.connect(admin).setJurisdictionBlocked("0x5553", true);
+
+      const amount = ethers.parseUnits("10", 6);
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount);
+
+      await expect(vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address))
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(usBusinessDepositor.address, "0x5553", false, "deposit", "business");
+
+      expect(await vault.balanceOf(usBusinessDepositor.address)).to.equal(0);
+    });
+
+    it("rejects zero jurisdiction code on allow and block setters", async function () {
       const { vault, admin } = await loadFixture(deployVaultFixture);
       await expect(
         vault.connect(admin).setJurisdictionAllowed("0x0000", true)
       ).to.be.revertedWithCustomError(vault, "InvalidJurisdictionCode");
+      await expect(
+        vault.connect(admin).setJurisdictionBlocked("0x0000", true)
+      ).to.be.revertedWithCustomError(vault, "InvalidJurisdictionCode");
     });
 
-    it("supports batch allowlist updates", async function () {
+    it("supports batch allowlist and blocklist updates", async function () {
       const { vault, admin } = await loadFixture(deployVaultFixture);
       await vault.connect(admin).setJurisdictionAllowedBatch(["0x5553", "0x5347"], true);
       expect(await vault.allowedJurisdictions("0x5553")).to.equal(true);
       expect(await vault.allowedJurisdictions("0x5347")).to.equal(true);
+
+      await vault.connect(admin).setJurisdictionBlockedBatch(["0x5347"], true);
+      expect(await vault.blockedJurisdictions("0x5347")).to.equal(true);
     });
 
     it("accepts an empty batch allowlist update as a no-op", async function () {
@@ -43,7 +79,7 @@ describe("CATVault", function () {
       expect(await vault.allowedJurisdictions("0x5553")).to.equal(false);
     });
 
-    it("restricts allowlist changes to COMPLIANCE_ROLE", async function () {
+    it("restricts allowlist and blocklist changes to COMPLIANCE_ROLE", async function () {
       const { vault, usBusinessDepositor } = await loadFixture(deployVaultFixture);
       const role = await vault.COMPLIANCE_ROLE();
       const account = usBusinessDepositor.address.toLowerCase();
@@ -51,7 +87,7 @@ describe("CATVault", function () {
         vault.connect(usBusinessDepositor).setJurisdictionAllowed("0x5553", true)
       ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
       await expect(
-        vault.connect(usBusinessDepositor).setJurisdictionAllowedBatch(["0x5553"], true)
+        vault.connect(usBusinessDepositor).setJurisdictionBlocked("0x5347", true)
       ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
     });
 
@@ -151,6 +187,16 @@ describe("CATVault", function () {
         "JurisdictionParseFailed"
       );
     });
+
+    it("requireJurisdictionAllowed reverts with JurisdictionBlocked for denied accounts", async function () {
+      const { vault, admin, sgBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      await expect(
+        vault.requireJurisdictionAllowed(sgBusinessDepositor.address)
+      )
+        .to.be.revertedWithCustomError(vault, "JurisdictionBlocked")
+        .withArgs(sgBusinessDepositor.address, "0x5347");
+    });
   });
 
   describe("deposits", function () {
@@ -180,22 +226,35 @@ describe("CATVault", function () {
         .withArgs(usIndividualDepositor.address, "0x5553", true, "deposit", "individual");
     });
 
-    it("reverts for SG business when only US is allowed", async function () {
+    it("emits JurisdictionChecked(allowed=false) for SG and leaves a receipt log", async function () {
       const { vault, asset, admin, sgBusinessDepositor } = await loadFixture(deployVaultFixture);
       await allowUsOnly(vault, admin);
 
       const amount = ethers.parseUnits("50", 6);
       await asset.connect(sgBusinessDepositor).approve(await vault.getAddress(), amount);
 
-      await expect(
-        vault.connect(sgBusinessDepositor).deposit(amount, sgBusinessDepositor.address)
-      )
-        .to.be.revertedWithCustomError(vault, "JurisdictionBlocked")
-        .withArgs(sgBusinessDepositor.address, "0x5347");
+      const tx = await vault
+        .connect(sgBusinessDepositor)
+        .deposit(amount, sgBusinessDepositor.address);
+      const receipt = await tx.wait();
+
+      await expect(tx)
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(sgBusinessDepositor.address, "0x5347", false, "deposit", "business");
+
+      const checked = receipt!.logs.filter((log) => {
+        try {
+          return vault.interface.parseLog(log)?.name === "JurisdictionChecked";
+        } catch {
+          return false;
+        }
+      });
+      expect(checked.length).to.be.greaterThan(0);
+      expect(await vault.balanceOf(sgBusinessDepositor.address)).to.equal(0);
     });
 
-    it("reverts when jurisdiction metadata cannot be parsed", async function () {
-      const { vault, asset, businessRegistry, admin } = await loadFixture(deployVaultFixture);
+    it("does not mint shares when jurisdiction metadata cannot be parsed", async function () {
+      const { vault, asset, businessRegistry } = await loadFixture(deployVaultFixture);
       const signers = await ethers.getSigners();
       const badUser = signers[5];
       await linkBusinessFor(businessRegistry, badUser.address, "ABN", "999", "Unknown Territory XYZ");
@@ -207,7 +266,7 @@ describe("CATVault", function () {
       ).to.be.revertedWithCustomError(vault, "JurisdictionParseFailed");
     });
 
-    it("reverts for allowed jurisdiction not on allowlist (default deny)", async function () {
+    it("emits blocked check and mints nothing when US is not on allowlist (default deny)", async function () {
       const { vault, asset, usBusinessDepositor } = await loadFixture(deployVaultFixture);
       const amount = ethers.parseUnits("10", 6);
       await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount);
@@ -215,8 +274,10 @@ describe("CATVault", function () {
       await expect(
         vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address)
       )
-        .to.be.revertedWithCustomError(vault, "JurisdictionBlocked")
-        .withArgs(usBusinessDepositor.address, "0x5553");
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(usBusinessDepositor.address, "0x5553", false, "deposit", "business");
+
+      expect(await vault.balanceOf(usBusinessDepositor.address)).to.equal(0);
     });
   });
 
@@ -239,7 +300,7 @@ describe("CATVault", function () {
         .withArgs(usBusinessDepositor.address, "0x5553", true, "withdraw", "business");
     });
 
-    it("reverts withdrawal when jurisdiction is removed from allowlist", async function () {
+    it("emits blocked withdraw check and does not burn shares after allowlist removal", async function () {
       const { vault, asset, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
       await allowUsOnly(vault, admin);
       const amount = ethers.parseUnits("100", 6);
@@ -249,15 +310,13 @@ describe("CATVault", function () {
 
       await vault.connect(admin).setJurisdictionAllowed("0x5553", false);
 
-      await expect(
-        vault.connect(usBusinessDepositor).withdraw(
-          amount,
-          usBusinessDepositor.address,
-          usBusinessDepositor.address
-        )
-      )
-        .to.be.revertedWithCustomError(vault, "JurisdictionBlocked")
-        .withArgs(usBusinessDepositor.address, "0x5553");
+      const tx = await vault
+        .connect(usBusinessDepositor)
+        .withdraw(amount, usBusinessDepositor.address, usBusinessDepositor.address);
+      await expect(tx)
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(usBusinessDepositor.address, "0x5553", false, "withdraw", "business");
+      expect(await vault.balanceOf(usBusinessDepositor.address)).to.equal(amount);
     });
   });
 
@@ -326,6 +385,44 @@ describe("CATVault", function () {
       await expect(
         vault.connect(usBusinessDepositor).invalidateJurisdictionCache(usBusinessDepositor.address)
       ).to.be.revertedWith(`AccessControl: account ${account} is missing role ${role}`);
+    });
+  });
+
+  describe("gas ceiling (100000)", function () {
+    it("cached jurisdiction check path uses under 100000 gas", async function () {
+      const { vault, asset, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      const amount = ethers.parseUnits("10", 6);
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount * 2n);
+      await vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address);
+
+      const tx = await vault
+        .connect(usBusinessDepositor)
+        .recordJurisdictionCheck(usBusinessDepositor.address, "deposit");
+      const receipt = await tx.wait();
+      expect(receipt!.gasUsed).to.be.lte(GAS_LIMIT_JURISDICTION);
+    });
+
+    it("checkJurisdiction view stays under 100000 gas (uncached parse)", async function () {
+      const { vault, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+
+      const gas = await vault.checkJurisdiction.estimateGas(usBusinessDepositor.address);
+      expect(gas).to.be.lte(GAS_LIMIT_JURISDICTION);
+    });
+
+    it("warm-cache deposit jurisdiction overhead stays under 100000 gas", async function () {
+      const { vault, asset, admin, usBusinessDepositor } = await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+      const amount = ethers.parseUnits("5", 6);
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), amount * 3n);
+      await vault.connect(usBusinessDepositor).deposit(amount, usBusinessDepositor.address);
+
+      const warmCheck = await vault
+        .connect(usBusinessDepositor)
+        .recordJurisdictionCheck(usBusinessDepositor.address, "deposit");
+      const warmReceipt = await warmCheck.wait();
+      expect(warmReceipt!.gasUsed).to.be.lte(GAS_LIMIT_JURISDICTION);
     });
   });
 

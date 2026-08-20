@@ -68,6 +68,13 @@ export const CAT_VAULT_ABI = [
     outputs: [{ type: "string" }],
   },
   {
+    name: "blockedJurisdictions",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "jurisdiction", type: "bytes2" }],
+    outputs: [{ type: "bool" }],
+  },
+  {
     name: "refreshJurisdictionCache",
     type: "function",
     stateMutability: "nonpayable",
@@ -78,6 +85,27 @@ export const CAT_VAULT_ABI = [
     name: "invalidateJurisdictionCache",
     type: "function",
     stateMutability: "nonpayable",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [],
+  },
+  {
+    name: "recordJurisdictionCheck",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "account", type: "address" },
+      { name: "operation", type: "string" },
+    ],
+    outputs: [
+      { name: "jurisdiction", type: "bytes2" },
+      { name: "allowed", type: "bool" },
+      { name: "depositorPath", type: "string" },
+    ],
+  },
+  {
+    name: "requireJurisdictionAllowed",
+    type: "function",
+    stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [],
   },
@@ -134,6 +162,26 @@ export const CAT_VAULT_ABI = [
     outputs: [],
   },
   {
+    name: "setJurisdictionBlocked",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "jurisdiction", type: "bytes2" },
+      { name: "blocked", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
+    name: "setJurisdictionBlockedBatch",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "jurisdictions", type: "bytes2[]" },
+      { name: "blocked", type: "bool" },
+    ],
+    outputs: [],
+  },
+  {
     name: "businessRegistry",
     type: "function",
     stateMutability: "view",
@@ -162,6 +210,14 @@ export const CAT_VAULT_ABI = [
     inputs: [
       { indexed: true, name: "jurisdiction", type: "bytes2" },
       { indexed: false, name: "allowed", type: "bool" },
+    ],
+  },
+  {
+    type: "event",
+    name: "JurisdictionBlocklistUpdated",
+    inputs: [
+      { indexed: true, name: "jurisdiction", type: "bytes2" },
+      { indexed: false, name: "blocked", type: "bool" },
     ],
   },
   {

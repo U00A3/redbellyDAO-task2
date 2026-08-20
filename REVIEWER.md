@@ -25,13 +25,22 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 
 ---
 
-## Revision summary (reviewer feedback, August 2026)
+## Revision summary (reviewer feedback, August 2026 - round 2)
 
 | Reviewer request | Status |
 |------------------|--------|
-| Tailwind / component layout + overflow-wrap for labels | Done — Tailwind CSS + `overflow-wrap: anywhere` on stat tiles / containers |
-| AccessControl + `COMPLIANCE_ROLE` (deprecate Ownable) | Done — allowlist + cache invalidation gated by `COMPLIANCE_ROLE` |
-| Jurisdiction cache `mapping(address => bytes2)` | Done — first parse cached; `refresh` / `invalidate` |
+| Events for **blocked** deposit/withdraw attempts | Done — external `recordJurisdictionCheck` so `JurisdictionChecked(allowed=false)` stays in the receipt (EVM discards logs on revert) |
+| Configurable **allowlist and blocklist** | Done — `allowedJurisdictions` + `blockedJurisdictions` |
+| Gas ceiling 100000 verified | Done — hardhat-gas-reporter + assertions on cached check and `checkJurisdiction` estimateGas |
+| Task Board brand kit on live UI | Done — Kinetic Consensus tokens, Be Vietnam Pro / JetBrains Mono, DAO logo |
+
+### Prior items (still in place)
+
+| Reviewer request | Status |
+|------------------|--------|
+| Tailwind + overflow-wrap | Done |
+| AccessControl + COMPLIANCE_ROLE | Done |
+| Jurisdiction cache | Done |
 
 ### Previous revision (July 2026)
 
@@ -78,8 +87,8 @@ wallet -> Business registry (first) OR Individual registry (second)
 ```bash
 cd task2
 npm install
-npm test              # 46 tests
-npm run coverage      # 95% lines, 96% branch; CATVault 100%
+npm test              # 52 tests
+npm run coverage      # gas reporter also prints method costs
 ```
 
 ## Reviewer walkthrough
@@ -111,23 +120,23 @@ npm test && npm run coverage
 
 ---
 
-## Testnet contracts (AccessControl + cache deploy)
+## Testnet contracts (events + allow/block deploy)
 
 | Contract | Address |
 |----------|---------|
-| CATVault | [`0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A`](https://redbelly.testnet.routescan.io/address/0x2985348f5B61B8a4073e9e9489FeF6D0AFc7B61A) |
-| MockAsset (catUSD) | [`0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F`](https://redbelly.testnet.routescan.io/address/0x1c9F2c14bb93851e3F236Fb91ef150Ba25FacE2F) |
-| MockBusinessPermissionRegistry | [`0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A`](https://redbelly.testnet.routescan.io/address/0x7caFa152FE25196f0Ee3568DFAF1686fc6f5EE5A) |
-| MockIndividualPermissionRegistry | [`0x8832dc665Cb7164e9C8A6A34230630c071313E44`](https://redbelly.testnet.routescan.io/address/0x8832dc665Cb7164e9C8A6A34230630c071313E44) |
+| CATVault | [`0x8BF14cba70f156792bd9313CEdCba05ACd60094F`](https://redbelly.testnet.routescan.io/address/0x8BF14cba70f156792bd9313CEdCba05ACd60094F) |
+| MockAsset (catUSD) | [`0xf5D7D92f5C4AfF56F6b5C99c3C119FBCC7E69B1C`](https://redbelly.testnet.routescan.io/address/0xf5D7D92f5C4AfF56F6b5C99c3C119FBCC7E69B1C) |
+| MockBusinessPermissionRegistry | [`0x40a0f7B01Ef6A156D6419bB16281916D40caBfc7`](https://redbelly.testnet.routescan.io/address/0x40a0f7B01Ef6A156D6419bB16281916D40caBfc7) |
+| MockIndividualPermissionRegistry | [`0x02a4Ac4bea74B5Be9F53C22a312b746Ca0741fda`](https://redbelly.testnet.routescan.io/address/0x02a4Ac4bea74B5Be9F53C22a312b746Ca0741fda) |
 | Vault DEFAULT_ADMIN / COMPLIANCE (deployer) | `0xA2c6a3fC1E12dF79B9e3D099FaA2Ffe860450F76` |
 
 ### Verified demo transactions
 
 | Scenario | Tx / result |
 |----------|-------------|
-| US business deposit (allowed) | [0x65e907…9ea7](https://redbelly.testnet.routescan.io/tx/0x65e9070346bf154ba3a6e3a16070f6f1e6f1e8bebbc5e1b5041be9db05709ea7) |
-| SG business deposit (denied) | Reverted `JurisdictionBlocked` |
-| US individual deposit (allowed) | [0xd6af0e…8066](https://redbelly.testnet.routescan.io/tx/0xd6af0edb05a3d4d6974e935bfdc43903ee1cd17bed5af722603ed708c4398066) |
+| US business deposit (allowed) | [0xf3d6b9…bea3](https://redbelly.testnet.routescan.io/tx/0xf3d6b9771f3e78251ea429c92a0b4cb263239905b68e7585ef0af1ab41bebea3) |
+| SG business deposit (blocked, event in receipt) | [0x7da923…e436](https://redbelly.testnet.routescan.io/tx/0x7da9233efb9fdefd8c045dc5e07e59ba354756fcaee56191102a6a2cb4e7e436) |
+| US individual deposit (allowed) | [0x8d594e…fe5b](https://redbelly.testnet.routescan.io/tx/0x8d594e12c920d7f8eae11d96ff1e2b6c92b0010181011f5523041d185205fe5b) |
 
 Details: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 

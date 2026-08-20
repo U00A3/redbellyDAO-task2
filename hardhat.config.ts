@@ -10,6 +10,12 @@ const config: HardhatUserConfig = {
       optimizer: { enabled: true, runs: 200 },
     },
   },
+  gasReporter: {
+    enabled: true,
+    currency: "USD",
+    showTimeSpent: true,
+    excludeContracts: ["mocks/", "Mock"],
+  },
   networks: {
     hardhat: {
       accounts: { count: 20 },

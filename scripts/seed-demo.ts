@@ -109,6 +109,7 @@ async function main() {
   const depositAmount = ethers.parseUnits("100", 6);
   let allowedUsBusinessTxHash: string | undefined;
   let allowedUsIndividualTxHash: string | undefined;
+  let blockedSgDepositTxHash: string | undefined;
 
   if (onRedbelly) {
     console.log("Redbelly testnet mode - using permissioned deployer wallet for txs\n");
@@ -127,17 +128,27 @@ async function main() {
     console.log("Relinked deployer to SG business identifier…");
     await (await vault.connect(admin).invalidateJurisdictionCache(admin.address)).wait();
     console.log("Invalidated jurisdiction cache so the next deposit re-parses as SG…");
+    // Explicit blocklist entry for SG (allowlist + blocklist requirement).
+    await (await vault.connect(admin).setJurisdictionBlocked("0x5347", true)).wait();
 
-    console.log("Blocked SG deposit (expect revert)…");
-    try {
-      await vault.connect(admin).deposit(depositAmount, admin.address);
-      console.log("  ERROR: deposit should have reverted");
-    } catch {
-      console.log("  reverted as expected: JurisdictionBlocked");
-    }
+    console.log("Blocked SG deposit (expect JurisdictionChecked allowed=false in receipt)…");
+    const blockedTx = await vault.connect(admin).deposit(depositAmount, admin.address);
+    const blockedReceipt = await blockedTx.wait();
+    blockedSgDepositTxHash = blockedTx.hash;
+    const blockedLog = blockedReceipt!.logs.some((log) => {
+      try {
+        return vault.interface.parseLog(log)?.name === "JurisdictionChecked";
+      } catch {
+        return false;
+      }
+    });
+    console.log("  tx:", blockedTx.hash);
+    console.log("  JurisdictionChecked in receipt:", blockedLog);
+    console.log("  shares after blocked attempt:", (await vault.balanceOf(admin.address)).toString());
 
     await (await businessRegistry.unlinkBusiness(admin.address)).wait();
     await (await individualRegistry.linkIndividual(admin.address, await usIndividual.getAddress())).wait();
+    await (await vault.connect(admin).invalidateJurisdictionCache(admin.address)).wait();
     console.log("Allowed US individual deposit (deployer on individual path)…");
     const individualTx = await vault.connect(admin).deposit(depositAmount, admin.address);
     await individualTx.wait();
@@ -158,9 +169,9 @@ async function main() {
 
     try {
       await vault.connect(sgUser).deposit(depositAmount, sgUser.address);
-      console.log("ERROR: SG deposit should have reverted");
+      console.log("SG deposit returned without minting (blocked path)");
     } catch {
-      console.log("SG deposit reverted as expected");
+      console.log("SG deposit reverted during parse/enforce");
     }
   }
 
@@ -175,7 +186,9 @@ async function main() {
     "UI: Demo1/Demo4 = US allowed, Demo2 = SG blocked, Demo3 = unlinked.";
   manifest.demoTransactions = {
     allowedUsBusinessDeposit: allowedUsBusinessTxHash ?? null,
-    blockedSgDeposit: "reverted JurisdictionBlocked (no tx hash)",
+    blockedSgDeposit: blockedSgDepositTxHash
+      ? blockedSgDepositTxHash
+      : "JurisdictionChecked allowed=false (see seed log)",
     allowedUsIndividualDeposit: allowedUsIndividualTxHash ?? null,
   };
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");

@@ -10,10 +10,12 @@ import {IIndividualPermissionRegistry} from "./interfaces/IIndividualPermissionR
 import {JurisdictionHelper} from "./libraries/JurisdictionHelper.sol";
 
 /// @title CATVault
-/// @notice ERC-4626 vault enforcing jurisdiction-based deposit and withdrawal restrictions
-///         using on-chain Business or Individual Identifier metadata and an allowlist (default deny).
-/// @dev Allowlist mutations require COMPLIANCE_ROLE (grantable to a multisig or timelock).
-///      Parsed ISO codes are cached per account so repeat deposits/withdrawals skip string parsing.
+/// @notice ERC-4626 vault with jurisdiction allowlist + blocklist, COMPLIANCE_ROLE admin,
+///         cached ISO codes, and JurisdictionChecked logs on every deposit/withdraw attempt.
+/// @dev A top-level `revert` discards logs in the same transaction. Blocked attempts therefore
+///      emit `JurisdictionChecked(allowed=false)` via an external self-call and then return
+///      without minting/burning (balances unchanged). `requireJurisdictionAllowed` still reverts
+///      with `JurisdictionBlocked` for integrators that want a hard error without a state change.
 contract CATVault is ERC4626, AccessControl {
     bytes32 public constant COMPLIANCE_ROLE = keccak256("COMPLIANCE_ROLE");
     bytes32 private constant PATH_BUSINESS = keccak256("business");
@@ -22,13 +24,19 @@ contract CATVault is ERC4626, AccessControl {
     IBusinessPermissionRegistry public immutable businessRegistry;
     IIndividualPermissionRegistry public immutable individualRegistry;
 
-    /// @dev Default-deny: only explicitly allowed jurisdictions may deposit or withdraw.
+    /// @dev Default-deny allowlist: must be explicitly true to pass.
     mapping(bytes2 => bool) public allowedJurisdictions;
 
-    /// @dev Cached ISO 3166-1 alpha-2 code from the first successful parse for `account`.
+    /// @dev Explicit blocklist: always denies, even if also on the allowlist.
+    mapping(bytes2 => bool) public blockedJurisdictions;
+
+    /// @dev Cached ISO 3166-1 alpha-2 from the first successful parse for `account`.
     mapping(address => bytes2) public cachedJurisdictions;
 
     mapping(address => bytes32) private _cachedDepositorPath;
+
+    /// @dev Skip re-entrancy into jurisdiction hooks while executing the ERC-4626 body.
+    bool private _enforcementBypass;
 
     event JurisdictionChecked(
         address indexed account,
@@ -39,6 +47,8 @@ contract CATVault is ERC4626, AccessControl {
     );
 
     event JurisdictionAllowlistUpdated(bytes2 indexed jurisdiction, bool allowed);
+
+    event JurisdictionBlocklistUpdated(bytes2 indexed jurisdiction, bool blocked);
 
     event JurisdictionCacheUpdated(
         address indexed account,
@@ -62,7 +72,7 @@ contract CATVault is ERC4626, AccessControl {
         _grantRole(COMPLIANCE_ROLE, msg.sender);
     }
 
-    /// @notice Preview live jurisdiction resolution and allowlist status (does not read the cache).
+    /// @notice Live preview (no cache). `allowed` is false when blocklisted or not allowlisted.
     function checkJurisdiction(address account)
         public
         view
@@ -73,27 +83,38 @@ contract CATVault is ERC4626, AccessControl {
             businessRegistry,
             individualRegistry
         );
-        allowed = allowedJurisdictions[jurisdiction];
+        allowed = _isPermitted(jurisdiction);
     }
 
-    /// @notice Cached depositor path (`business` / `individual`) or empty if uncached.
+    /// @notice Reverts with JurisdictionBlocked when the account is not permitted.
+    function requireJurisdictionAllowed(address account) public view {
+        (bytes2 jurisdiction, bool allowed, ) = checkJurisdiction(account);
+        if (!allowed) revert JurisdictionBlocked(account, jurisdiction);
+    }
+
     function cachedDepositorPath(address account) external view returns (string memory) {
         return _pathToString(_cachedDepositorPath[account]);
     }
 
-    /// @notice Re-parse identifier metadata and overwrite the cache (anyone may warm or refresh).
+    /// @notice Record a jurisdiction check on-chain (always succeeds, always emits).
+    /// @dev External so a subsequent soft-reject in the caller can keep this log.
+    function recordJurisdictionCheck(address account, string calldata operation)
+        external
+        returns (bytes2 jurisdiction, bool allowed, string memory depositorPath)
+    {
+        return _logJurisdictionCheck(account, operation);
+    }
+
     function refreshJurisdictionCache(address account) external {
         _writeCache(account);
     }
 
-    /// @notice Drop a stale cache entry (e.g. after KYC metadata change). COMPLIANCE_ROLE only.
     function invalidateJurisdictionCache(address account) external onlyRole(COMPLIANCE_ROLE) {
         delete cachedJurisdictions[account];
         delete _cachedDepositorPath[account];
         emit JurisdictionCacheUpdated(account, bytes2(0), "");
     }
 
-    /// @notice Allow or deny deposits and withdrawals from a jurisdiction (default deny when false).
     function setJurisdictionAllowed(bytes2 jurisdiction, bool allowed)
         external
         onlyRole(COMPLIANCE_ROLE)
@@ -101,7 +122,6 @@ contract CATVault is ERC4626, AccessControl {
         _setAllowed(jurisdiction, allowed);
     }
 
-    /// @notice Batch-update the jurisdiction allowlist.
     function setJurisdictionAllowedBatch(bytes2[] calldata jurisdictions, bool allowed)
         external
         onlyRole(COMPLIANCE_ROLE)
@@ -111,10 +131,68 @@ contract CATVault is ERC4626, AccessControl {
         }
     }
 
-    function _setAllowed(bytes2 jurisdiction, bool allowed) private {
-        if (jurisdiction == bytes2(0)) revert InvalidJurisdictionCode();
-        allowedJurisdictions[jurisdiction] = allowed;
-        emit JurisdictionAllowlistUpdated(jurisdiction, allowed);
+    function setJurisdictionBlocked(bytes2 jurisdiction, bool blocked)
+        external
+        onlyRole(COMPLIANCE_ROLE)
+    {
+        _setBlocked(jurisdiction, blocked);
+    }
+
+    function setJurisdictionBlockedBatch(bytes2[] calldata jurisdictions, bool blocked)
+        external
+        onlyRole(COMPLIANCE_ROLE)
+    {
+        for (uint256 i = 0; i < jurisdictions.length; i++) {
+            _setBlocked(jurisdictions[i], blocked);
+        }
+    }
+
+    /// @inheritdoc ERC4626
+    function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
+        if (!_passJurisdiction(receiver, "deposit")) {
+            return 0;
+        }
+        _enforcementBypass = true;
+        shares = super.deposit(assets, receiver);
+        _enforcementBypass = false;
+    }
+
+    /// @inheritdoc ERC4626
+    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+        if (!_passJurisdiction(receiver, "deposit")) {
+            return 0;
+        }
+        _enforcementBypass = true;
+        assets = super.mint(shares, receiver);
+        _enforcementBypass = false;
+    }
+
+    /// @inheritdoc ERC4626
+    function withdraw(uint256 assets, address receiver, address owner)
+        public
+        override
+        returns (uint256 shares)
+    {
+        if (!_passJurisdiction(owner, "withdraw")) {
+            return 0;
+        }
+        _enforcementBypass = true;
+        shares = super.withdraw(assets, receiver, owner);
+        _enforcementBypass = false;
+    }
+
+    /// @inheritdoc ERC4626
+    function redeem(uint256 shares, address receiver, address owner)
+        public
+        override
+        returns (uint256 assets)
+    {
+        if (!_passJurisdiction(owner, "withdraw")) {
+            return 0;
+        }
+        _enforcementBypass = true;
+        assets = super.redeem(shares, receiver, owner);
+        _enforcementBypass = false;
     }
 
     function _deposit(
@@ -123,7 +201,9 @@ contract CATVault is ERC4626, AccessControl {
         uint256 assets,
         uint256 shares
     ) internal override {
-        _enforceJurisdiction(receiver, "deposit");
+        if (!_enforcementBypass) {
+            _enforceJurisdictionOrRevert(receiver, "deposit");
+        }
         super._deposit(caller, receiver, assets, shares);
     }
 
@@ -134,23 +214,55 @@ contract CATVault is ERC4626, AccessControl {
         uint256 assets,
         uint256 shares
     ) internal override {
-        _enforceJurisdiction(owner, "withdraw");
+        if (!_enforcementBypass) {
+            _enforceJurisdictionOrRevert(owner, "withdraw");
+        }
         super._withdraw(caller, receiver, owner, assets, shares);
     }
 
-    function _enforceJurisdiction(address account, string memory operation) private {
-        bytes2 jurisdiction = cachedJurisdictions[account];
-        string memory depositorPath;
+    /// @dev External self-call emits the log in a successful sub-frame, then soft-rejects if needed.
+    function _passJurisdiction(address account, string memory operation) private returns (bool) {
+        (, bool allowed, ) = this.recordJurisdictionCheck(account, operation);
+        return allowed;
+    }
 
+    function _enforceJurisdictionOrRevert(address account, string memory operation) private {
+        (bytes2 jurisdiction, bool allowed, string memory depositorPath) =
+            _logJurisdictionCheck(account, operation);
+        if (!allowed) revert JurisdictionBlocked(account, jurisdiction);
+        // silence unused when allowed (path already emitted)
+        depositorPath;
+    }
+
+    function _logJurisdictionCheck(address account, string memory operation)
+        private
+        returns (bytes2 jurisdiction, bool allowed, string memory depositorPath)
+    {
+        jurisdiction = cachedJurisdictions[account];
         if (jurisdiction == bytes2(0)) {
             (jurisdiction, depositorPath) = _writeCache(account);
         } else {
             depositorPath = _pathToString(_cachedDepositorPath[account]);
         }
-
-        bool allowed = allowedJurisdictions[jurisdiction];
+        allowed = _isPermitted(jurisdiction);
         emit JurisdictionChecked(account, jurisdiction, allowed, operation, depositorPath);
-        if (!allowed) revert JurisdictionBlocked(account, jurisdiction);
+    }
+
+    function _isPermitted(bytes2 jurisdiction) private view returns (bool) {
+        if (blockedJurisdictions[jurisdiction]) return false;
+        return allowedJurisdictions[jurisdiction];
+    }
+
+    function _setAllowed(bytes2 jurisdiction, bool allowed) private {
+        if (jurisdiction == bytes2(0)) revert InvalidJurisdictionCode();
+        allowedJurisdictions[jurisdiction] = allowed;
+        emit JurisdictionAllowlistUpdated(jurisdiction, allowed);
+    }
+
+    function _setBlocked(bytes2 jurisdiction, bool blocked) private {
+        if (jurisdiction == bytes2(0)) revert InvalidJurisdictionCode();
+        blockedJurisdictions[jurisdiction] = blocked;
+        emit JurisdictionBlocklistUpdated(jurisdiction, blocked);
     }
 
     function _writeCache(address account)

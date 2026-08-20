@@ -127,7 +127,8 @@ export default function JurisdictionHistory({ vaultAddress }) {
         Jurisdiction check history
       </h3>
       <p className="overview-lead">
-        On-chain <code>JurisdictionChecked</code> events from deposits and withdrawals (newest first).
+        On-chain <code>JurisdictionChecked</code> events from every deposit and withdrawal
+        attempt, including blocked ones (newest first).
       </p>
       {loading && (
         <div className="step-loading">
