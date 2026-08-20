@@ -40,7 +40,7 @@ Community submission for **Redbelly DAO Task 2** - Compliant Asset Tokenization 
 ```bash
 npm install
 npm run compile
-npm test                 # 52 tests
+npm test                 # 53 tests
 npm run coverage         # 95% lines, 96% branch; CATVault 100% stmts/branch/funcs/lines
 ```
 

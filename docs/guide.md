@@ -388,7 +388,7 @@ npm test
 npm run coverage
 ```
 
-**Latest coverage (revision, 52 tests passing):** run `npm test` and `npm run coverage` for the live table. Overall lines stay **≥ 90%**; `JurisdictionHelper.sol` remains **100%** lines / **≥95%** branches. Gas reporter + assertions keep cached jurisdiction checks **≤ 100000**.
+**Latest coverage (revision, 53 tests passing):** run `npm test` and `npm run coverage` for the live table. Overall lines stay **≥ 90%**; `CATVault.sol` and `JurisdictionHelper.sol` are **100%** lines. Gas reporter + assertions keep cached jurisdiction checks **≤ 100000**.
 
 ---
 

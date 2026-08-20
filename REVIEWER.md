@@ -15,7 +15,7 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 | Allowed deposit succeeds | tests + testnet deposit txs (business + individual) |
 | `JurisdictionChecked` on **every** attempt (incl. blocked) | external `recordJurisdictionCheck`; tests; UI history; [SG tx](https://redbelly.testnet.routescan.io/tx/0x7da9233efb9fdefd8c045dc5e07e59ba354756fcaee56191102a6a2cb4e7e436) |
 | Admin dashboard + Task Board brand kit | `ui/` Kinetic Consensus tokens, DAO logos, allow/block editor, history |
-| Unit tests, >= 90% line coverage, gas ≤100k | `npm test` (52), `npm run coverage` + gas assertions |
+| Unit tests, >= 90% line coverage, gas ≤100k | `npm test` (53), `npm run coverage` + gas assertions |
 | **COMPLIANCE_ROLE (AccessControl)** | `onlyRole(COMPLIANCE_ROLE)` for allow/block; grantable to multisig/timelock |
 | **Jurisdiction cache** | `cachedJurisdictions`; first parse stored, later txs skip helper loops |
 | Documentation 8-10 pages + Individual SDK trade-offs | [`docs/guide.md`](docs/guide.md) §3.4 |
@@ -87,7 +87,7 @@ wallet -> Business registry (first) OR Individual registry (second)
 ```bash
 cd task2
 npm install
-npm test              # 52 tests
+npm test              # 53 tests
 npm run coverage      # gas reporter also prints method costs
 ```
 
