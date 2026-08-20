@@ -35,9 +35,6 @@ contract CATVault is ERC4626, AccessControl {
 
     mapping(address => bytes32) private _cachedDepositorPath;
 
-    /// @dev Skip re-entrancy into jurisdiction hooks while executing the ERC-4626 body.
-    bool private _enforcementBypass;
-
     event JurisdictionChecked(
         address indexed account,
         bytes2 indexed jurisdiction,
@@ -152,9 +149,7 @@ contract CATVault is ERC4626, AccessControl {
         if (!_passJurisdiction(receiver, "deposit")) {
             return 0;
         }
-        _enforcementBypass = true;
-        shares = super.deposit(assets, receiver);
-        _enforcementBypass = false;
+        return super.deposit(assets, receiver);
     }
 
     /// @inheritdoc ERC4626
@@ -162,9 +157,7 @@ contract CATVault is ERC4626, AccessControl {
         if (!_passJurisdiction(receiver, "deposit")) {
             return 0;
         }
-        _enforcementBypass = true;
-        assets = super.mint(shares, receiver);
-        _enforcementBypass = false;
+        return super.mint(shares, receiver);
     }
 
     /// @inheritdoc ERC4626
@@ -176,9 +169,7 @@ contract CATVault is ERC4626, AccessControl {
         if (!_passJurisdiction(owner, "withdraw")) {
             return 0;
         }
-        _enforcementBypass = true;
-        shares = super.withdraw(assets, receiver, owner);
-        _enforcementBypass = false;
+        return super.withdraw(assets, receiver, owner);
     }
 
     /// @inheritdoc ERC4626
@@ -190,48 +181,13 @@ contract CATVault is ERC4626, AccessControl {
         if (!_passJurisdiction(owner, "withdraw")) {
             return 0;
         }
-        _enforcementBypass = true;
-        assets = super.redeem(shares, receiver, owner);
-        _enforcementBypass = false;
-    }
-
-    function _deposit(
-        address caller,
-        address receiver,
-        uint256 assets,
-        uint256 shares
-    ) internal override {
-        if (!_enforcementBypass) {
-            _enforceJurisdictionOrRevert(receiver, "deposit");
-        }
-        super._deposit(caller, receiver, assets, shares);
-    }
-
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
-        uint256 assets,
-        uint256 shares
-    ) internal override {
-        if (!_enforcementBypass) {
-            _enforceJurisdictionOrRevert(owner, "withdraw");
-        }
-        super._withdraw(caller, receiver, owner, assets, shares);
+        return super.redeem(shares, receiver, owner);
     }
 
     /// @dev External self-call emits the log in a successful sub-frame, then soft-rejects if needed.
     function _passJurisdiction(address account, string memory operation) private returns (bool) {
         (, bool allowed, ) = this.recordJurisdictionCheck(account, operation);
         return allowed;
-    }
-
-    function _enforceJurisdictionOrRevert(address account, string memory operation) private {
-        (bytes2 jurisdiction, bool allowed, string memory depositorPath) =
-            _logJurisdictionCheck(account, operation);
-        if (!allowed) revert JurisdictionBlocked(account, jurisdiction);
-        // silence unused when allowed (path already emitted)
-        depositorPath;
     }
 
     function _logJurisdictionCheck(address account, string memory operation)

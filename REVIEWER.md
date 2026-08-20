@@ -9,19 +9,19 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 | ERC-4626 (OpenZeppelin) | `contracts/CATVault.sol` |
 | Read jurisdiction from Business Identifier on-chain | `JurisdictionHelper.sol`, `IBusinessIdentifier`, `IBusinessPermissionRegistry` |
 | **Individual depositor path** | `IIndividualIdentifier`, `IIndividualPermissionRegistry`, dual-path `resolveJurisdiction` |
-| **Admin-configurable allowlist (default deny)** | `allowedJurisdictions`, `setJurisdictionAllowed`, `setJurisdictionAllowedBatch` |
-| **Benchmark: US allowed, SG blocked** | `test/CATVault.test.ts` (`allowUsOnly`, SG revert, US business + individual succeed) |
-| Denied deposit reverts with jurisdiction error | `JurisdictionBlocked(account, jurisdiction)`; tests + testnet demo |
-| Allowed deposit succeeds | tests + testnet deposit txs (business + individual paths) |
-| `JurisdictionChecked` on every deposit and withdraw (with `depositorPath`) | `CATVault._enforceJurisdiction`; tests; UI history panel |
-| Admin dashboard reflects on-chain admin functions | `ui/` (allowlist, preview, **Jurisdiction check history**, Tailwind layout) |
-| Unit tests, >= 90% line coverage | `npm test` (46/46), `npm run coverage` |
-| **COMPLIANCE_ROLE (AccessControl)** | `CATVault` — `onlyRole(COMPLIANCE_ROLE)` for allowlist; grantable to multisig/timelock |
-| **Jurisdiction cache** | `cachedJurisdictions`; first parse stored, later txs skip `JurisdictionHelper` loops |
+| **Admin-configurable allowlist + blocklist** | `allowedJurisdictions`, `blockedJurisdictions`, setters + batch |
+| **Benchmark: US allowed, SG blocked** | seed + tests; SG blocked deposit leaves event in receipt |
+| Denied deposit does not mint; hard check reverts | soft-reject `deposit`/`withdraw` return `0`; `requireJurisdictionAllowed` → `JurisdictionBlocked` |
+| Allowed deposit succeeds | tests + testnet deposit txs (business + individual) |
+| `JurisdictionChecked` on **every** attempt (incl. blocked) | external `recordJurisdictionCheck`; tests; UI history; [SG tx](https://redbelly.testnet.routescan.io/tx/0x7da9233efb9fdefd8c045dc5e07e59ba354756fcaee56191102a6a2cb4e7e436) |
+| Admin dashboard + Task Board brand kit | `ui/` Kinetic Consensus tokens, DAO logos, allow/block editor, history |
+| Unit tests, >= 90% line coverage, gas ≤100k | `npm test` (52), `npm run coverage` + gas assertions |
+| **COMPLIANCE_ROLE (AccessControl)** | `onlyRole(COMPLIANCE_ROLE)` for allow/block; grantable to multisig/timelock |
+| **Jurisdiction cache** | `cachedJurisdictions`; first parse stored, later txs skip helper loops |
 | Documentation 8-10 pages + Individual SDK trade-offs | [`docs/guide.md`](docs/guide.md) §3.4 |
 | Deploy Redbelly Testnet | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`deployments/redbellyTestnet.json`](deployments/redbellyTestnet.json) |
 
-**Failure criteria avoided:** denied jurisdictions can deposit (tested revert), silent parse failure (reverts `JurisdictionParseFailed`), missing jurisdiction events (asserted in tests + UI history).
+**Failure criteria avoided:** denied jurisdictions cannot mint shares (tested soft-reject + `requireJurisdictionAllowed` revert); silent parse failure (`JurisdictionParseFailed`); missing jurisdiction events on blocked attempts (receipt log asserted in tests + [SG demo tx](https://redbelly.testnet.routescan.io/tx/0x7da9233efb9fdefd8c045dc5e07e59ba354756fcaee56191102a6a2cb4e7e436)).
 
 ---
 
@@ -46,11 +46,11 @@ This submission maps to **Redbelly DAO Task 2 - Compliant Asset Tokenization (CA
 
 | Reviewer request | Status |
 |------------------|--------|
-| Allowlist default deny (not blocklist) | Done — `allowedJurisdictions`, US-only benchmark |
+| Allowlist default deny | Done — still default deny; blocklist is an additional explicit deny |
 | IndividualOnboardingSDK path + tests | Done — dual-path helper, Demo4, unit tests |
-| UI transaction history (`JurisdictionChecked`) | Done — `ui/src/components/JurisdictionHistory.jsx` |
-| Expand `docs/guide.md` + Individual trade-offs | Done — §3.4, updated coverage table |
-| Coverage report + helper lines 63, 131 | Done — branch **96%+**; CATVault 100% branch |
+| UI transaction history (`JurisdictionChecked`) | Done — includes blocked attempts |
+| Expand `docs/guide.md` + Individual trade-offs | Done — §3.4, allow+block, event soft-reject |
+| Coverage report + helper edges | Done — overall lines ≥90%; helper 100% lines |
 
 ---
 
@@ -69,10 +69,10 @@ Both SDK flows require an **Averer API key**. **This submitter does not have tha
 wallet -> Business registry (first) OR Individual registry (second)
        -> Identifier metadata
        -> JurisdictionHelper -> bytes2 ISO + depositorPath
-       -> allowedJurisdictions (default deny)
+       -> allowedJurisdictions (default deny) AND NOT blockedJurisdictions
 ```
 
-**Jurisdiction preview** calls `checkJurisdiction(address)`. **Jurisdiction check history** indexes `JurisdictionChecked` events.
+**Jurisdiction preview** calls `checkJurisdiction(address)`. **Jurisdiction check history** indexes `JurisdictionChecked` events (allowed and blocked).
 
 ---
 
@@ -97,9 +97,9 @@ npm run coverage      # gas reporter also prints method costs
 
 1. Open https://redbelly-dao-task2.vercel.app
 2. **Jurisdiction preview:** `Demo1` → US · allowed · business; `Demo2` → SG · blocked; `Demo4` → US · allowed · individual
-3. **Active allowlist:** only `US` allowed
-4. **Jurisdiction check history:** rows from verified deposit txs below
-5. Labels such as **Individual registry** wrap instead of overflowing the tile
+3. **Active allowlist / blocklist:** `US` allowed; `SG` blocked
+4. **Jurisdiction check history:** includes blocked SG attempt (event in receipt)
+5. Brand: Kinetic Consensus (DAO logo, Be Vietnam Pro / JetBrains Mono) — matches [Task Board brand kit](https://redbelly-dao-taskboard.vercel.app/brand)
 
 No wallet connect required for preview/history.
 

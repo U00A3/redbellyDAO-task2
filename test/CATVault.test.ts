@@ -253,6 +253,32 @@ describe("CATVault", function () {
       expect(await vault.balanceOf(sgBusinessDepositor.address)).to.equal(0);
     });
 
+    it("soft-rejects blocked mint and redeem without minting or burning", async function () {
+      const { vault, asset, admin, usBusinessDepositor, sgBusinessDepositor } =
+        await loadFixture(deployVaultFixture);
+      await allowUsOnly(vault, admin);
+
+      const shares = ethers.parseUnits("40", 6);
+      await asset.connect(sgBusinessDepositor).approve(await vault.getAddress(), shares);
+      await expect(vault.connect(sgBusinessDepositor).mint(shares, sgBusinessDepositor.address))
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(sgBusinessDepositor.address, "0x5347", false, "deposit", "business");
+      expect(await vault.balanceOf(sgBusinessDepositor.address)).to.equal(0);
+
+      await asset.connect(usBusinessDepositor).approve(await vault.getAddress(), shares);
+      await vault.connect(usBusinessDepositor).deposit(shares, usBusinessDepositor.address);
+      await vault.connect(admin).setJurisdictionAllowed("0x5553", false);
+
+      await expect(
+        vault
+          .connect(usBusinessDepositor)
+          .redeem(shares, usBusinessDepositor.address, usBusinessDepositor.address)
+      )
+        .to.emit(vault, "JurisdictionChecked")
+        .withArgs(usBusinessDepositor.address, "0x5553", false, "withdraw", "business");
+      expect(await vault.balanceOf(usBusinessDepositor.address)).to.equal(shares);
+    });
+
     it("does not mint shares when jurisdiction metadata cannot be parsed", async function () {
       const { vault, asset, businessRegistry } = await loadFixture(deployVaultFixture);
       const signers = await ethers.getSigners();

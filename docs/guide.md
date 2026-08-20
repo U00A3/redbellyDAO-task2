@@ -138,17 +138,19 @@ We deliberately avoid storing jurisdiction in a separate off-chain database. Ins
 4. **Hard failure**  
    If no code can be derived, revert `JurisdictionParseFailed(account, reason)`. The vault **never** defaults to “allow” on ambiguous metadata.
 
-### 4.4 Allowlist policy (default deny)
+### 4.4 Allowlist + blocklist (default deny)
 
-Unlike a blocklist (deny specific regions, allow everything else), this vault implements **default deny**:
+The vault combines both lists from the task brief:
 
-- `allowedJurisdictions[code] == false` for all codes until `COMPLIANCE_ROLE` explicitly allows them.
-- Benchmark scenario (reviewer revision): `allowedJurisdictions["US"] = true` only → US deposits succeed, SG deposits revert.
-- Regulatory framing: suitable for products licensed in **enumerated** jurisdictions (e.g. Reg D / qualified jurisdictions only).
+- **Allowlist (default deny):** `allowedJurisdictions[code] == false` until `COMPLIANCE_ROLE` explicitly allows a code.
+- **Blocklist (explicit deny):** `blockedJurisdictions[code] == true` always wins over the allowlist.
+- Effective rule: `allowed = allowlisted && !blocklisted`.
+- Benchmark: `US` allowlisted; `SG` blocklisted → US deposits succeed; SG attempts emit `JurisdictionChecked(allowed=false)` and do not mint shares.
+- Regulatory framing: enumerated licensed jurisdictions plus a fast kill-switch for sanctions/policy changes.
 
 ### 4.5 Why bytes2 jurisdiction keys
 
-ISO 3166-1 alpha-2 codes fit in `bytes2`, minimizing storage gas for the allowlist mapping and enabling compact events. Admin UI converts human-readable `US` ↔ `0x5553` via helpers.
+ISO 3166-1 alpha-2 codes fit in `bytes2`, minimizing storage gas for allow/block mappings and enabling compact events. Admin UI converts human-readable `US` ↔ `0x5553` via helpers.
 
 ### 4.6 Regulatory rationale
 
@@ -174,8 +176,8 @@ Using issuer-verified registration data ties restrictions to **the same source o
 
 **Admin functions (`COMPLIANCE_ROLE`):**
 
-- `setJurisdictionAllowed(bytes2 jurisdiction, bool allowed)`
-- `setJurisdictionAllowedBatch(bytes2[] jurisdictions, bool allowed)`
+- `setJurisdictionAllowed` / `setJurisdictionAllowedBatch`
+- `setJurisdictionBlocked` / `setJurisdictionBlockedBatch`
 - `invalidateJurisdictionCache(address account)`
 
 **Cache (gas):**
@@ -183,17 +185,19 @@ Using issuer-verified registration data ties restrictions to **the same source o
 - `mapping(address => bytes2) cachedJurisdictions` — first parse is stored; later deposits/withdrawals read storage instead of looping through `JurisdictionHelper`
 - `refreshJurisdictionCache(address)` — public warm/refresh after KYC metadata change
 - `checkJurisdiction` remains a **live** preview (does not read the cache) so the admin UI shows current registry data
+- Cached `recordJurisdictionCheck` stays **≤ 100k gas** (asserted in tests + hardhat-gas-reporter)
 
-**Public views:**
+**Public views / helpers:**
 
-- `checkJurisdiction(address account) → (bytes2 jurisdiction, bool allowed, string depositorPath)`
-- `allowedJurisdictions(bytes2)`
-- `cachedJurisdictions(address)` / `cachedDepositorPath(address)`
+- `checkJurisdiction(address) → (bytes2, bool allowed, string depositorPath)`
+- `requireJurisdictionAllowed(address)` — hard `JurisdictionBlocked` for integrators
+- `allowedJurisdictions` / `blockedJurisdictions`
+- `cachedJurisdictions` / `cachedDepositorPath`
 
-**Hooks overridden:**
+**Entry points overridden:**
 
-- `_deposit` → jurisdiction check on `receiver`
-- `_withdraw` → jurisdiction check on `owner`
+- `deposit` / `mint` → check `receiver`; blocked → emit + return `0` (no mint)
+- `withdraw` / `redeem` → check `owner`; blocked → emit + return `0` (no burn)
 
 ### 5.2 Events and errors
 
@@ -207,13 +211,14 @@ event JurisdictionChecked(
 );
 
 event JurisdictionAllowlistUpdated(bytes2 indexed jurisdiction, bool allowed);
+event JurisdictionBlocklistUpdated(bytes2 indexed jurisdiction, bool blocked);
 
 error JurisdictionBlocked(address account, bytes2 jurisdiction);
 error JurisdictionParseFailed(address account, string reason);
 error InvalidJurisdictionCode();
 ```
 
-Blocked deposits **revert before** asset transfer; allowed deposits emit `JurisdictionChecked` with `allowed = true` then proceed.
+**Blocked attempts keep logs:** a top-level `revert` would discard events, so the vault emits `JurisdictionChecked(allowed=false)` via an external self-call (`recordJurisdictionCheck`) and then soft-rejects (returns `0`, balances unchanged). Allowed flows emit `allowed=true` and proceed. `requireJurisdictionAllowed` still reverts for callers that need a hard error.
 
 ### 5.3 Interface layer
 
@@ -261,9 +266,9 @@ The React app in `ui/` is a **mockup wired to real contract ABIs**:
 |----------|-------------------|
 | Vault overview | `totalAssets()`, `businessRegistry()`, `individualRegistry()` |
 | Jurisdiction preview | `checkJurisdiction(address)` + registry/identifier reads; **Demo1–Demo4** aliases (§7.1) |
-| Active allowlist | `allowedJurisdictions(bytes2)` per tracked ISO code |
-| Allow / deny | `setJurisdictionAllowed`, `setJurisdictionAllowedBatch` |
-| Jurisdiction check history | `JurisdictionChecked` event logs (account, ISO, status, op, path) |
+| Active allowlist / blocklist | `allowedJurisdictions` / `blockedJurisdictions` |
+| Allow / deny / block | `setJurisdictionAllowed*`, `setJurisdictionBlocked*` |
+| Jurisdiction check history | `JurisdictionChecked` logs (incl. blocked attempts) |
 
 Configure `VITE_VAULT_ADDRESS` after deployment. Allowlist transactions require `COMPLIANCE_ROLE` (the deployer is granted it at construct time; production should grant it to a multisig or timelock). Other connected wallets can still preview jurisdiction outcomes and view transaction history.
 
@@ -317,7 +322,7 @@ event JurisdictionChecked(
 
 **Rendered columns:** masked account, ISO code (decoded from `bytes2` via `bytes2ToIso`), an allowed/blocked status badge, operation, depositor path, and an explorer link to the transaction. Rows are capped at 50 (newest first) to keep the DOM light; the explorer link lets a reviewer drill into raw calldata and logs.
 
-**Why events, not storage reads.** The mapping `allowedJurisdictions` only tells you the *current* policy. The history view answers *what actually happened over time* — including attempts that reverted are visible on the explorer, while successful checks are captured as events. This separation (policy state vs. audit log) mirrors how a real compliance dashboard is built: cheap on-chain events + client-side indexing, with the option to graduate to a subgraph for production-scale querying (§11).
+**Why events, not storage reads.** Allow/block mappings only tell you the *current* policy. History answers *what actually happened* — including **blocked attempts**, which still leave `JurisdictionChecked(allowed=false)` in the receipt. This separation (policy state vs. audit log) mirrors a real compliance dashboard: cheap on-chain events + client-side indexing, with a subgraph option for production (§11).
 
 **Production note.** For high-volume vaults, replace the `fromBlock: 0n` backfill with a bounded range or a subgraph/Dune query; the event schema is designed to be subgraph-friendly (indexed `account` and `jurisdiction` topics enable efficient filtering by wallet or region).
 
@@ -383,16 +388,7 @@ npm test
 npm run coverage
 ```
 
-**Latest coverage (revision, 46 tests passing):**
-
-| Metric | All files | CATVault.sol | JurisdictionHelper.sol |
-|--------|-----------|--------------|------------------------|
-| Statements | **96.1%** | **100%** | **100%** |
-| Branches | **96.5%** | **100%** | **95.7%** |
-| Functions | 85.7% | **100%** | **100%** |
-| Lines | **94.7%** | **100%** | **100%** |
-
-Statement, branch, function, and line coverage are all reported per reviewer request. Core contracts (`CATVault.sol`, `JurisdictionHelper.sol`) reach **100% line, function, and branch coverage** on `CATVault` and **≥95% branch** on `JurisdictionHelper` (overall branch **96.2%**, up from ~64% pre-revision). Tests explicitly cover helper edge branches including short ISO3166-1 identifier revert, two-letter address-tail parsing, `ISO3166`/`COUNTRY` identifier types, full country-name aliases (`United States`, `United Kingdom`, `South Korea`, `United Arab Emirates`), empty-address fall-through, and dual-path resolution. The `% Functions` figure for “All files” is diluted only by unused view getters on mock contracts, not production code.
+**Latest coverage (revision, 52 tests passing):** run `npm test` and `npm run coverage` for the live table. Overall lines stay **≥ 90%**; `JurisdictionHelper.sol` remains **100%** lines / **≥95%** branches. Gas reporter + assertions keep cached jurisdiction checks **≤ 100000**.
 
 ---
 
@@ -421,10 +417,10 @@ The deploy script:
 
 ### 9.3 Post-deploy demo flow
 
-1. Run `npm run seed:demo` — links Demo1/Demo2 business wallets and Demo4 individual wallet; sets **US-only allowlist**.
-2. Attempt `deposit` from SG-linked wallet (Demo2) → expect revert `JurisdictionBlocked`.
-3. Attempt `deposit` from US business (Demo1) or US individual (Demo4) → success + `JurisdictionChecked` with correct `depositorPath`.
-4. UI **Jurisdiction check history** shows the deposit events.
+1. Run `npm run seed:demo` — links Demo wallets; sets **US allowlisted** and **SG blocklisted**.
+2. Attempt `deposit` from SG (Demo2) → tx succeeds with `0` shares minted; receipt includes `JurisdictionChecked(allowed=false)`.
+3. Attempt `deposit` from US business (Demo1) or US individual (Demo4) → success + `JurisdictionChecked(allowed=true)` with correct `depositorPath`.
+4. UI **Jurisdiction check history** shows allowed and blocked attempts.
 
 If you deploy your own registry, link wallets via Hardhat instead - the UI aliases are optional convenience for the reference testnet deployment.
 
