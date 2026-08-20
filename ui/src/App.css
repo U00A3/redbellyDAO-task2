@@ -1478,9 +1478,12 @@ body::before { display: none !important; }
 .page-subtitle,
 .widget-info,
 .footnote,
-.function-list,
 .history-table th {
   color: var(--rb-muted) !important;
+}
+
+.function-list {
+  color: var(--rb-text) !important;
 }
 
 .field-input,
@@ -1548,6 +1551,18 @@ code,
 .history-table td:first-child,
 .history-table td:last-child {
   font-family: var(--font-mono) !important;
+}
+
+/* Dark panels: never keep the old light-theme ink color on <code> */
+.function-list code,
+.info-block code,
+.jurisdiction-meta code,
+.cat-desc code,
+.footnote code,
+.tx-links-caption code,
+code {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 .explorer-link { color: var(--rb-brand-text) !important; }
